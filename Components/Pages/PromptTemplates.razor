@@ -1,0 +1,219 @@
+@page "/prompt-templates"
+@rendermode InteractiveServer
+
+@inject IPromptTemplateService PromptTemplateService
+
+<PageTitle>Prompt Templates</PageTitle>
+
+<div class="workspace">
+    <div class="page-heading">
+        <div>
+            <h1>Prompt Templates</h1>
+            <p class="text-muted mb-0">External markdown templates stored in the project PromptTemplates folder.</p>
+        </div>
+        <a class="btn btn-outline-primary" href="">Back to Evaluation</a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="alert alert-success">@statusMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <section class="card section-card h-100">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <h2>Available Templates</h2>
+                    </div>
+
+                    <div class="list-group template-list">
+                        @foreach (var template in templates)
+                        {
+                            <button type="button"
+                                    class="list-group-item list-group-item-action @(template.FileName == selectedFileName ? "active" : string.Empty)"
+                                    @onclick="@(() => SelectTemplateAsync(template.FileName))">
+                                <span class="d-block fw-semibold">@template.FileName</span>
+                                <span class="small">@template.DisplayName</span>
+                            </button>
+                        }
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-lg-8">
+            <section class="card section-card">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <h2>Edit Template</h2>
+                        <span class="text-muted small">@selectedFileName</span>
+                    </div>
+
+                    <textarea class="form-control template-editor"
+                              @bind="editorText"
+                              @bind:event="oninput"
+                              disabled="@string.IsNullOrWhiteSpace(selectedFileName)"></textarea>
+
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <button class="btn btn-primary" type="button" @onclick="SaveSelectedAsync" disabled="@string.IsNullOrWhiteSpace(selectedFileName)">Save Changes</button>
+                        <button class="btn btn-outline-secondary" type="button" @onclick="DuplicateSelectedAsync" disabled="@string.IsNullOrWhiteSpace(selectedFileName)">Duplicate Template</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card section-card mt-3">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <h2>Create New Template</h2>
+                    </div>
+
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-8">
+                            <label class="form-label" for="newTemplateName">File name</label>
+                            <input id="newTemplateName" class="form-control" @bind="newTemplateName" placeholder="new_prompt_template.md" />
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-success w-100" type="button" @onclick="CreateNewAsync">Create Template</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<PromptTemplateInfo> templates = [];
+    private string? selectedFileName;
+    private string editorText = string.Empty;
+    private string newTemplateName = string.Empty;
+    private string? errorMessage;
+    private string? statusMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTemplatesAsync();
+    }
+
+    private async Task LoadTemplatesAsync()
+    {
+        templates = (await PromptTemplateService.GetTemplatesAsync()).ToList();
+
+        if (templates.Count > 0 && string.IsNullOrWhiteSpace(selectedFileName))
+        {
+            await SelectTemplateAsync(templates.First().FileName);
+        }
+    }
+
+    private async Task SelectTemplateAsync(string fileName)
+    {
+        ClearMessages();
+        selectedFileName = fileName;
+        editorText = await PromptTemplateService.GetTemplateContentAsync(fileName);
+    }
+
+    private async Task SaveSelectedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedFileName))
+        {
+            return;
+        }
+
+        ClearMessages();
+
+        try
+        {
+            await PromptTemplateService.SaveTemplateAsync(selectedFileName, editorText);
+            statusMessage = $"{selectedFileName} saved.";
+            await RefreshListPreservingSelectionAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private async Task DuplicateSelectedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedFileName))
+        {
+            return;
+        }
+
+        ClearMessages();
+
+        try
+        {
+            var duplicate = await PromptTemplateService.DuplicateTemplateAsync(selectedFileName);
+            statusMessage = $"{selectedFileName} duplicated as {duplicate.FileName}.";
+            selectedFileName = duplicate.FileName;
+            await RefreshListPreservingSelectionAsync();
+            editorText = await PromptTemplateService.GetTemplateContentAsync(duplicate.FileName);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private async Task CreateNewAsync()
+    {
+        ClearMessages();
+
+        try
+        {
+            var template = await PromptTemplateService.CreateTemplateAsync(newTemplateName, GetStarterTemplate());
+            statusMessage = $"{template.FileName} created.";
+            newTemplateName = string.Empty;
+            selectedFileName = template.FileName;
+            await RefreshListPreservingSelectionAsync();
+            editorText = await PromptTemplateService.GetTemplateContentAsync(template.FileName);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private async Task RefreshListPreservingSelectionAsync()
+    {
+        var selected = selectedFileName;
+        templates = (await PromptTemplateService.GetTemplatesAsync()).ToList();
+        selectedFileName = selected;
+    }
+
+    private void ClearMessages()
+    {
+        errorMessage = null;
+        statusMessage = null;
+    }
+
+    private static string GetStarterTemplate() =>
+        """
+        # New Proposal Evaluation Prompt
+
+        Programme: {{PROGRAMME_TYPE}}
+        Evaluation level: {{EVALUATION_LEVEL}}
+
+        ## Task
+        Evaluate the proposal against the call requirements using a clear, evidence-based assessment.
+
+        ## Call / Topic Description
+        {{CALL_TEXT}}
+
+        ## Proposal
+        {{PROPOSAL_TEXT}}
+
+        ## Real ESR, if provided
+        {{REAL_EVALUATION_TEXT}}
+
+        ## Output Format
+        {{OUTPUT_TEMPLATE}}
+        """;
+}

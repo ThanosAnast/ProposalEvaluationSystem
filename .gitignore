@@ -1,0 +1,31 @@
+## Build output
+bin/
+obj/
+
+## User- and machine-specific files
+.vs/
+.vscode/
+*.user
+*.suo
+*.rsuser
+
+## Runtime and local generated files
+DataProtectionKeys/
+*.log
+run.err
+run.log
+
+## Local secrets
+secrets.json
+*.Development.local.json
+*.Local.json
+
+## Test and coverage output
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+## OS files
+Thumbs.db
+.DS_Store

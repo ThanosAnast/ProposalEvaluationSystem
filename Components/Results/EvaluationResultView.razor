@@ -1,0 +1,96 @@
+@if (Result is not null)
+{
+    <section class="result-stack" id="evaluation-result">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+            <div>
+                <h2 class="h4 mb-1">Structured Evaluation Report</h2>
+                <div class="text-muted small">@Result.PromptTemplateUsed · @Result.ProgrammeType · @Result.EvaluationLevel</div>
+            </div>
+            <span class="badge text-bg-warning result-badge">@Result.ThresholdAssessment.OverallResult</span>
+        </div>
+
+        <div class="card result-card">
+            <div class="card-body">
+                <h3 class="h5">Executive Summary</h3>
+                <p>@Result.ExecutiveSummary</p>
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle score-table">
+                        <thead>
+                            <tr>
+                                <th>Criterion</th>
+                                <th class="text-end">Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Excellence</td>
+                                <td class="text-end">@Result.Excellence.Score.ToString("0.0")</td>
+                            </tr>
+                            <tr>
+                                <td>Impact</td>
+                                <td class="text-end">@Result.Impact.Score.ToString("0.0")</td>
+                            </tr>
+                            <tr>
+                                <td>Quality and Efficiency of Implementation</td>
+                                <td class="text-end">@Result.Implementation.Score.ToString("0.0")</td>
+                            </tr>
+                            <tr class="fw-semibold">
+                                <td>Total score</td>
+                                <td class="text-end">@Result.TotalScore.ToString("0.0")</td>
+                            </tr>
+                            <tr>
+                                <td>Threshold result</td>
+                                <td class="text-end">@Result.ThresholdAssessment.OverallResult</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p class="mb-0 text-muted">@Result.ThresholdAssessment.Explanation</p>
+            </div>
+        </div>
+
+        <CriterionEvaluationView Criterion="Result.Excellence" />
+        <CriterionEvaluationView Criterion="Result.Impact" />
+        <CriterionEvaluationView Criterion="Result.Implementation" />
+
+        <div class="card result-card">
+            <div class="card-body">
+                <h3 class="h5">Final Comment</h3>
+                <p>@Result.FinalComment</p>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="metric-label">Confidence level</div>
+                        <div class="fw-semibold">@Result.ConfidenceLevel</div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="metric-label">Limitations</div>
+                        <ul class="mb-0">
+                            @foreach (var limitation in Result.Limitations)
+                            {
+                                <li>@limitation</li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <details class="details-panel">
+            <summary>Generated prompt used for this evaluation</summary>
+            <pre class="prompt-output mt-3">@Result.GeneratedPrompt</pre>
+        </details>
+
+        <div class="placeholder-panel">
+            <h3 class="h6">Future ESR Comparison</h3>
+            <p class="mb-0">@Result.RealEvaluationComparisonPlaceholder</p>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public EvaluationResult? Result { get; set; }
+}

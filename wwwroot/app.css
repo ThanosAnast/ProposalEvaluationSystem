@@ -1,0 +1,222 @@
+html, body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background: #f5f7f8;
+    color: #1f2933;
+}
+
+a, .btn-link {
+    color: #0f6b6e;
+}
+
+.btn-primary {
+    color: #fff;
+    background-color: #0f6b6e;
+    border-color: #0f6b6e;
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+    background-color: #0b585b;
+    border-color: #0b585b;
+}
+
+.btn:focus,
+.btn:active:focus,
+.btn-link.nav-link:focus,
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+    box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem rgba(15, 107, 110, 0.25);
+    border-color: #0f6b6e;
+}
+
+.content {
+    padding-top: 1.25rem;
+    padding-bottom: 2rem;
+}
+
+h1:focus {
+    outline: none;
+}
+
+.workspace {
+    max-width: 1500px;
+    margin: 0 auto;
+}
+
+.page-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.page-heading h1 {
+    font-size: clamp(1.6rem, 2vw, 2.2rem);
+    margin: 0;
+}
+
+.workspace-section,
+.section-card,
+.result-card,
+.details-panel,
+.placeholder-panel {
+    margin-bottom: 1rem;
+}
+
+.section-card,
+.doc-card,
+.result-card {
+    border: 1px solid #d8dee4;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.section-heading h2 {
+    font-size: 1.05rem;
+    margin: 0;
+}
+
+.document-textarea {
+    min-height: 18rem;
+    resize: vertical;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+
+.file-input {
+    min-width: 15rem;
+    max-width: 100%;
+    width: auto;
+}
+
+.prompt-preview,
+.template-editor {
+    min-height: 34rem;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+
+.template-editor {
+    min-height: 38rem;
+}
+
+.prompt-output {
+    max-height: 28rem;
+    overflow: auto;
+    padding: 1rem;
+    background: #111827;
+    color: #e5e7eb;
+    border-radius: 6px;
+    white-space: pre-wrap;
+}
+
+.details-panel,
+.placeholder-panel {
+    border: 1px solid #d8dee4;
+    border-radius: 8px;
+    padding: 1rem;
+    background: #ffffff;
+}
+
+.details-panel summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.result-stack {
+    margin-top: 1.5rem;
+}
+
+.result-badge {
+    font-size: 0.95rem;
+}
+
+.score-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 3.5rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    background: #e6f3f2;
+    color: #0f6b6e;
+    font-weight: 700;
+}
+
+.score-table th,
+.score-table td {
+    white-space: nowrap;
+}
+
+.metric-label {
+    color: #667085;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.template-list {
+    max-height: 42rem;
+    overflow: auto;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid #26b050;
+}
+
+.invalid {
+    outline: 1px solid #e50000;
+}
+
+.validation-message {
+    color: #e50000;
+}
+
+.blazor-error-boundary {
+    background: #b32121;
+    padding: 1rem;
+    color: white;
+}
+
+.blazor-error-boundary::after {
+    content: "An error has occurred."
+}
+
+.darker-border-checkbox.form-check-input {
+    border-color: #929292;
+}
+
+.form-floating > .form-control-plaintext::placeholder,
+.form-floating > .form-control::placeholder {
+    color: var(--bs-secondary-color);
+    text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder,
+.form-floating > .form-control:focus::placeholder {
+    text-align: start;
+}
+
+@media (max-width: 700px) {
+    .page-heading,
+    .section-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .file-input {
+        width: 100%;
+    }
+}

@@ -1,0 +1,47 @@
+<div class="card result-card">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <h3 class="h5 mb-0">@Criterion.Name</h3>
+            <span class="score-pill">@Criterion.Score.ToString("0.0")</span>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <h4 class="h6">Strengths</h4>
+                <ul class="mb-0">
+                    @foreach (var item in Criterion.Strengths)
+                    {
+                        <li>@item</li>
+                    }
+                </ul>
+            </div>
+            <div class="col-lg-6">
+                <h4 class="h6">Weaknesses</h4>
+                <ul class="mb-0">
+                    @foreach (var item in Criterion.Weaknesses)
+                    {
+                        <li>@item</li>
+                    }
+                </ul>
+            </div>
+            <div class="col-12">
+                <h4 class="h6">Evidence</h4>
+                <ul class="mb-0">
+                    @foreach (var item in Criterion.Evidence)
+                    {
+                        <li>@item</li>
+                    }
+                </ul>
+            </div>
+            <div class="col-12">
+                <h4 class="h6">Assessment</h4>
+                <p class="mb-0">@Criterion.Assessment</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public CriterionEvaluation Criterion { get; set; } = new();
+}

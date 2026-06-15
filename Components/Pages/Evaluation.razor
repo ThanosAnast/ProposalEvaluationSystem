@@ -1,0 +1,383 @@
+@page "/"
+@page "/evaluation"
+@rendermode InteractiveServer
+
+@inject IDocumentTextExtractor DocumentTextExtractor
+@inject IPromptTemplateService PromptTemplateService
+@inject IPromptBuilder PromptBuilder
+@inject IEvaluationRunner EvaluationRunner
+@inject Microsoft.Extensions.Options.IOptions<OpenAiOptions> OpenAiOptions
+
+<PageTitle>Proposal Evaluation</PageTitle>
+
+<div class="workspace">
+    <div class="page-heading">
+        <div>
+            <h1>Technical Proposal Evaluation</h1>
+            <p class="text-muted mb-0">Experimental thesis prototype using file-based prompts and real or mock LLM-style evaluation.</p>
+        </div>
+        <a class="btn btn-outline-primary" href="prompt-templates">Manage Templates</a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="alert alert-success">@statusMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+
+    <section class="workspace-section">
+        <div class="section-heading">
+            <h2>Dataset Documents</h2>
+        </div>
+        <div class="row g-3">
+            <div class="col-xl-4">
+                <DocumentInputCard Title="Call / Topic Description"
+                                   Document="callDocument"
+                                   InputVersion="GetInputVersion(DocumentType.CallDescription)"
+                                   FileSelected="@(args => HandleFileSelected(DocumentType.CallDescription, args))"
+                                   ClearRequested="@(() => ClearDocument(DocumentType.CallDescription))" />
+            </div>
+            <div class="col-xl-4">
+                <DocumentInputCard Title="Proposal"
+                                   Document="proposalDocument"
+                                   InputVersion="GetInputVersion(DocumentType.Proposal)"
+                                   FileSelected="@(args => HandleFileSelected(DocumentType.Proposal, args))"
+                                   ClearRequested="@(() => ClearDocument(DocumentType.Proposal))" />
+            </div>
+            <div class="col-xl-4">
+                <DocumentInputCard Title="ESR / Evaluation Summary Report"
+                                   IsOptional="true"
+                                   Document="realEvaluationDocument"
+                                   InputVersion="GetInputVersion(DocumentType.EvaluationSummaryReport)"
+                                   FileSelected="@(args => HandleFileSelected(DocumentType.EvaluationSummaryReport, args))"
+                                   ClearRequested="@(() => ClearDocument(DocumentType.EvaluationSummaryReport))" />
+            </div>
+        </div>
+    </section>
+
+    <div class="row g-3 align-items-stretch">
+        <div class="col-lg-7">
+            <section class="card section-card h-100">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <h2>Evaluation Settings</h2>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label" for="programmeType">Programme Type</label>
+                            <select id="programmeType" class="form-select" @bind="selectedProgramme" @bind:after="ApplyTemplatePreference">
+                                @foreach (var programme in Enum.GetValues<ProgrammeType>())
+                                {
+                                    <option value="@programme">@programme</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="evaluationLevel">Evaluation Level</label>
+                            <select id="evaluationLevel" class="form-select" @bind="selectedLevel" @bind:after="ApplyTemplatePreference">
+                                @foreach (var level in Enum.GetValues<EvaluationLevel>())
+                                {
+                                    <option value="@level">@level</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="promptTemplate">Prompt Template</label>
+                            <select id="promptTemplate" class="form-select" @bind="selectedTemplateName">
+                                @foreach (var template in templates)
+                                {
+                                    <option value="@template.FileName">@template.FileName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="evaluationEngine">Evaluation Engine</label>
+                            <select id="evaluationEngine" class="form-select" @bind="selectedEngine">
+                                @foreach (var engine in Enum.GetValues<EvaluationEngine>())
+                                {
+                                    <option value="@engine">@engine</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="small text-muted mt-3">
+                        @if (selectedEngine == EvaluationEngine.OpenAI)
+                        {
+                            <span>OpenAI model: @OpenAiOptions.Value.Model. Configure the API key with user secrets or OPENAI_API_KEY.</span>
+                        }
+                        else
+                        {
+                            <span>Mock mode uses fixed thesis-demo scores and does not call the API.</span>
+                        }
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-lg-5">
+            <section class="card section-card h-100">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <h2>Prompt Controls</h2>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary" type="button" @onclick="PreviewPromptAsync" disabled="@IsBusyOrNotReady">Preview Prompt</button>
+                        <button class="btn btn-success" type="button" @onclick="RunEvaluationAsync" disabled="@IsBusyOrMissingRequiredText">Run Evaluation</button>
+                        <button class="btn btn-outline-secondary" type="button" @onclick="ClearForm">Clear Form</button>
+                    </div>
+                    <div class="small text-muted mt-3">
+                        @if (templates.Count == 0)
+                        {
+                            <span>No prompt templates found in PromptTemplates.</span>
+                        }
+                        else
+                        {
+                            <span>@templates.Count prompt templates available.</span>
+                        }
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    @if (showPromptPreview && !string.IsNullOrWhiteSpace(generatedPrompt))
+    {
+        <section class="card section-card">
+            <div class="card-body">
+                <div class="section-heading">
+                    <h2>Prompt Preview</h2>
+                    <span class="text-muted small">@selectedTemplateName</span>
+                </div>
+
+                <textarea class="form-control prompt-preview" readonly>@generatedPrompt</textarea>
+
+                <div class="row g-3 mt-1">
+                    <div class="col-lg-4">
+                        <details class="details-panel">
+                            <summary>Inserted call text</summary>
+                            <pre class="prompt-output mt-3">@callDocument.ExtractedText</pre>
+                        </details>
+                    </div>
+                    <div class="col-lg-4">
+                        <details class="details-panel">
+                            <summary>Inserted proposal text</summary>
+                            <pre class="prompt-output mt-3">@proposalDocument.ExtractedText</pre>
+                        </details>
+                    </div>
+                    <div class="col-lg-4">
+                        <details class="details-panel">
+                            <summary>Inserted ESR text</summary>
+                            <pre class="prompt-output mt-3">@(string.IsNullOrWhiteSpace(realEvaluationDocument.ExtractedText) ? "Not provided." : realEvaluationDocument.ExtractedText)</pre>
+                        </details>
+                    </div>
+                </div>
+            </div>
+        </section>
+    }
+
+    @if (evaluationResult is not null)
+    {
+        <EvaluationResultView Result="evaluationResult" />
+    }
+</div>
+
+@code {
+    private ProcessedDocument callDocument = NewDocument(DocumentType.CallDescription);
+    private ProcessedDocument proposalDocument = NewDocument(DocumentType.Proposal);
+    private ProcessedDocument realEvaluationDocument = NewDocument(DocumentType.EvaluationSummaryReport);
+    private List<PromptTemplateInfo> templates = [];
+    private string? selectedTemplateName;
+    private ProgrammeType selectedProgramme = ProgrammeType.Horizon;
+    private EvaluationLevel selectedLevel = EvaluationLevel.Essential;
+    private EvaluationEngine selectedEngine = EvaluationEngine.OpenAI;
+    private string? generatedPrompt;
+    private EvaluationResult? evaluationResult;
+    private string? errorMessage;
+    private string? statusMessage;
+    private bool isBusy;
+    private bool showPromptPreview;
+    private readonly Dictionary<DocumentType, int> inputVersions = new()
+    {
+        [DocumentType.CallDescription] = 0,
+        [DocumentType.Proposal] = 0,
+        [DocumentType.EvaluationSummaryReport] = 0
+    };
+
+    private bool IsBusyOrNotReady => isBusy || string.IsNullOrWhiteSpace(selectedTemplateName) || templates.Count == 0;
+
+    private bool IsBusyOrMissingRequiredText => IsBusyOrNotReady ||
+        string.IsNullOrWhiteSpace(callDocument.ExtractedText) ||
+        string.IsNullOrWhiteSpace(proposalDocument.ExtractedText);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTemplatesAsync();
+    }
+
+    private async Task LoadTemplatesAsync()
+    {
+        templates = (await PromptTemplateService.GetTemplatesAsync()).ToList();
+        ApplyTemplatePreference();
+    }
+
+    private void ApplyTemplatePreference()
+    {
+        if (templates.Count == 0)
+        {
+            selectedTemplateName = null;
+            return;
+        }
+
+        var preferredPrefix = $"{selectedProgramme}_{selectedLevel}".ToLowerInvariant();
+        selectedTemplateName = templates.FirstOrDefault(template => template.FileName.StartsWith(preferredPrefix, StringComparison.OrdinalIgnoreCase))?.FileName
+            ?? templates.First().FileName;
+    }
+
+    private async Task HandleFileSelected(DocumentType documentType, InputFileChangeEventArgs args)
+    {
+        ClearMessages();
+        isBusy = true;
+
+        try
+        {
+            var processedDocument = await DocumentTextExtractor.ExtractAsync(args.File, documentType);
+            SetDocument(documentType, processedDocument);
+            statusMessage = $"{args.File.Name} processed.";
+            showPromptPreview = false;
+            evaluationResult = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private void ClearDocument(DocumentType documentType)
+    {
+        SetDocument(documentType, NewDocument(documentType));
+        inputVersions[documentType]++;
+        generatedPrompt = null;
+        evaluationResult = null;
+        showPromptPreview = false;
+        ClearMessages();
+    }
+
+    private async Task PreviewPromptAsync()
+    {
+        ClearMessages();
+
+        try
+        {
+            var request = await BuildRequestAsync();
+            generatedPrompt = request.GeneratedPrompt;
+            showPromptPreview = true;
+            evaluationResult = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private async Task RunEvaluationAsync()
+    {
+        ClearMessages();
+        isBusy = true;
+
+        try
+        {
+            var request = await BuildRequestAsync();
+            generatedPrompt = request.GeneratedPrompt;
+            showPromptPreview = true;
+            evaluationResult = await EvaluationRunner.EvaluateAsync(selectedEngine, request);
+            statusMessage = $"{selectedEngine} evaluation completed.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task<EvaluationRequest> BuildRequestAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedTemplateName))
+        {
+            throw new InvalidOperationException("Select a prompt template before previewing or running an evaluation.");
+        }
+
+        var templateContent = await PromptTemplateService.GetTemplateContentAsync(selectedTemplateName);
+
+        var request = new EvaluationRequest
+        {
+            CallDocument = callDocument,
+            ProposalDocument = proposalDocument,
+            RealEvaluationDocument = string.IsNullOrWhiteSpace(realEvaluationDocument.ExtractedText) ? null : realEvaluationDocument,
+            ProgrammeType = selectedProgramme,
+            EvaluationLevel = selectedLevel,
+            PromptTemplateName = selectedTemplateName,
+            PromptTemplateContent = templateContent
+        };
+
+        request.GeneratedPrompt = PromptBuilder.Build(request);
+        return request;
+    }
+
+    private void ClearForm()
+    {
+        callDocument = NewDocument(DocumentType.CallDescription);
+        proposalDocument = NewDocument(DocumentType.Proposal);
+        realEvaluationDocument = NewDocument(DocumentType.EvaluationSummaryReport);
+        selectedProgramme = ProgrammeType.Horizon;
+        selectedLevel = EvaluationLevel.Essential;
+        generatedPrompt = null;
+        evaluationResult = null;
+        showPromptPreview = false;
+        inputVersions[DocumentType.CallDescription]++;
+        inputVersions[DocumentType.Proposal]++;
+        inputVersions[DocumentType.EvaluationSummaryReport]++;
+        ApplyTemplatePreference();
+        ClearMessages();
+    }
+
+    private int GetInputVersion(DocumentType documentType) => inputVersions[documentType];
+
+    private void SetDocument(DocumentType documentType, ProcessedDocument document)
+    {
+        switch (documentType)
+        {
+            case DocumentType.CallDescription:
+                callDocument = document;
+                break;
+            case DocumentType.Proposal:
+                proposalDocument = document;
+                break;
+            case DocumentType.EvaluationSummaryReport:
+                realEvaluationDocument = document;
+                break;
+        }
+    }
+
+    private void ClearMessages()
+    {
+        errorMessage = null;
+        statusMessage = null;
+    }
+
+    private static ProcessedDocument NewDocument(DocumentType documentType) => new()
+    {
+        DocumentType = documentType
+    };
+}
