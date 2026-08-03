@@ -1,12 +1,22 @@
+using System.Diagnostics;
 using System.Reflection;
 using Microsoft.Extensions.Options;
 using ProposalEvaluationSystem.Models;
 
 namespace ProposalEvaluationSystem.Services;
 
-public sealed class ExperimentRunFactory(IOptions<ExperimentsOptions> options) : IExperimentRunFactory
+public sealed class ExperimentRunFactory : IExperimentRunFactory
 {
-    private readonly ExperimentsOptions experimentOptions = options.Value;
+    private readonly ExperimentsOptions experimentOptions;
+    private readonly string gitCommitSha;
+
+    public ExperimentRunFactory(
+        IOptions<ExperimentsOptions> options,
+        IWebHostEnvironment environment)
+    {
+        experimentOptions = options.Value;
+        gitCommitSha = ResolveGitCommitSha(experimentOptions.GitCommitSha, environment.ContentRootPath);
+    }
 
     public ExperimentRun Create(ExperimentRunCreationRequest request)
     {
@@ -33,7 +43,13 @@ public sealed class ExperimentRunFactory(IOptions<ExperimentsOptions> options) :
                 ExecutionDurationMilliseconds = (long)request.ExecutionDuration.TotalMilliseconds,
                 ApplicationVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString()
                     ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString()
-                    ?? "unknown"
+                    ?? "unknown",
+                GitCommitSha = gitCommitSha,
+                ExperimentSchemaVersion = string.IsNullOrWhiteSpace(experimentOptions.ExperimentSchemaVersion)
+                    ? ExperimentsOptions.DefaultSchemaVersion
+                    : experimentOptions.ExperimentSchemaVersion,
+                EvaluationApiMetadata = request.IndependentEvaluation.ApiMetadata,
+                ComparisonApiMetadata = request.ComparisonResult?.ApiMetadata
             },
             IndependentEvaluation = request.IndependentEvaluation,
             ComparisonResult = request.ComparisonResult,
@@ -56,4 +72,42 @@ public sealed class ExperimentRunFactory(IOptions<ExperimentsOptions> options) :
         FileName = document.FileName,
         ContentSha256 = ContentHashService.ComputeSha256(document.ExtractedText)
     };
+
+    private static string ResolveGitCommitSha(string? configuredSha, string contentRootPath)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredSha))
+        {
+            return configuredSha.Trim();
+        }
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                WorkingDirectory = contentRootPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("rev-parse");
+            startInfo.ArgumentList.Add("HEAD");
+
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                return "unknown";
+            }
+
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            return process.WaitForExit(2000) && process.ExitCode == 0 && output.All(Uri.IsHexDigit)
+                ? output
+                : "unknown";
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return "unknown";
+        }
+    }
 }

@@ -2,9 +2,13 @@ namespace ProposalEvaluationSystem.Services;
 
 public class OpenAiOptions
 {
+    public const string DefaultModel = "gpt-5.4-mini-2026-03-17";
+
     public string? ApiKey { get; set; }
 
-    public string Model { get; set; } = "gpt-5.4-mini";
+    public string Model { get; set; } = DefaultModel;
+
+    public string ReasoningEffort { get; set; } = "medium";
 
     public string Endpoint { get; set; } = "https://api.openai.com/v1/responses";
 

@@ -102,23 +102,9 @@ public sealed partial class FileExperimentRepository : IExperimentRepository, ID
         await fileGate.WaitAsync(cancellationToken);
         try
         {
-            if (!Directory.Exists(experimentRoot))
-            {
-                return [];
-            }
-
-            var summaries = new List<ExperimentRunSummary>();
-            foreach (var path in Directory.EnumerateFiles(experimentRoot, "*.json", SearchOption.AllDirectories))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await using var stream = File.OpenRead(path);
-                var run = await JsonSerializer.DeserializeAsync<ExperimentRun>(stream, JsonOptions, cancellationToken);
-                if (run is null)
-                {
-                    continue;
-                }
-
-                summaries.Add(new ExperimentRunSummary
+            var runs = await ReadAllWithoutLockAsync(cancellationToken);
+            return runs
+                .Select(run => new ExperimentRunSummary
                 {
                     DatasetId = run.Metadata.DatasetId,
                     RunId = run.Metadata.RunId,
@@ -128,10 +114,7 @@ public sealed partial class FileExperimentRepository : IExperimentRepository, ID
                     TotalScore = run.IndependentEvaluation.TotalScore,
                     ThresholdResult = run.IndependentEvaluation.ThresholdAssessment.OverallResult,
                     HasEsrComparison = run.ComparisonResult is not null
-                });
-            }
-
-            return summaries
+                })
                 .OrderByDescending(summary => summary.CreatedAtUtc)
                 .ToArray();
         }
@@ -139,6 +122,45 @@ public sealed partial class FileExperimentRepository : IExperimentRepository, ID
         {
             fileGate.Release();
         }
+    }
+
+    public async Task<IReadOnlyList<ExperimentRun>> GetAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await fileGate.WaitAsync(cancellationToken);
+        try
+        {
+            var runs = await ReadAllWithoutLockAsync(cancellationToken);
+            return runs
+                .OrderBy(run => run.Metadata.CreatedAtUtc)
+                .ToArray();
+        }
+        finally
+        {
+            fileGate.Release();
+        }
+    }
+
+    private async Task<List<ExperimentRun>> ReadAllWithoutLockAsync(CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(experimentRoot))
+        {
+            return [];
+        }
+
+        var runs = new List<ExperimentRun>();
+        foreach (var path in Directory.EnumerateFiles(experimentRoot, "*.json", SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await using var stream = File.OpenRead(path);
+            var run = await JsonSerializer.DeserializeAsync<ExperimentRun>(stream, JsonOptions, cancellationToken);
+            if (run is not null)
+            {
+                runs.Add(run);
+            }
+        }
+
+        return runs;
     }
 
     public static string ValidateDatasetId(string datasetId)

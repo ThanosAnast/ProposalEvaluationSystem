@@ -8,5 +8,7 @@ public interface IExperimentRepository
 
     Task<ExperimentRun?> GetAsync(string datasetId, string runId, CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<ExperimentRun>> GetAllAsync(CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<ExperimentRunSummary>> GetSummariesAsync(CancellationToken cancellationToken = default);
 }

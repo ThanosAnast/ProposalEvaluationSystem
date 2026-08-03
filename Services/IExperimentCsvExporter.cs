@@ -4,5 +4,7 @@ namespace ProposalEvaluationSystem.Services;
 
 public interface IExperimentCsvExporter
 {
-    string Export(IReadOnlyCollection<ExperimentRunSummary> summaries);
+    string ExportExperimentRuns(IReadOnlyCollection<ExperimentRun> runs);
+
+    string ExportCriterionComparisons(IReadOnlyCollection<ExperimentRun> runs);
 }

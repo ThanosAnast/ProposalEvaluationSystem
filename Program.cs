@@ -60,18 +60,34 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseAntiforgery();
 app.MapStaticAssets();
 
-app.MapGet("/api/experiments/export.csv", async (
+app.MapGet("/api/experiments/experiment-runs.csv", async (
     IExperimentRepository repository,
     IExperimentCsvExporter exporter,
     CancellationToken cancellationToken) =>
 {
-    var summaries = await repository.GetSummariesAsync(cancellationToken);
-    var csv = exporter.Export(summaries);
+    var runs = await repository.GetAllAsync(cancellationToken);
+    var csv = exporter.ExportExperimentRuns(runs);
     return Results.File(
         Encoding.UTF8.GetBytes(csv),
         "text/csv; charset=utf-8",
-        $"experiment-summary-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
+        "experiment-runs.csv");
 });
+
+app.MapGet("/api/experiments/criterion-comparisons.csv", async (
+    IExperimentRepository repository,
+    IExperimentCsvExporter exporter,
+    CancellationToken cancellationToken) =>
+{
+    var runs = await repository.GetAllAsync(cancellationToken);
+    var csv = exporter.ExportCriterionComparisons(runs);
+    return Results.File(
+        Encoding.UTF8.GetBytes(csv),
+        "text/csv; charset=utf-8",
+        "criterion-comparisons.csv");
+});
+
+app.MapGet("/api/experiments/export.csv", () =>
+    Results.Redirect("/api/experiments/experiment-runs.csv"));
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

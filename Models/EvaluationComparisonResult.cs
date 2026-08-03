@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ProposalEvaluationSystem.Models;
 
 public sealed class EvaluationComparisonResult
@@ -17,15 +19,10 @@ public sealed class EvaluationComparisonResult
 
     public bool ThresholdAgreement { get; set; }
 
-    public List<string> SharedStrengths { get; set; } = [];
-
-    public List<string> SharedWeaknesses { get; set; } = [];
-
-    public List<string> FindingsDetectedOnlyByLlm { get; set; } = [];
-
-    public List<string> FindingsPresentOnlyInEsr { get; set; } = [];
-
     public string OverallComparisonSummary { get; set; } = string.Empty;
 
     public List<string> ComparisonLimitations { get; set; } = [];
+
+    [JsonIgnore]
+    public OpenAiResponseMetadata? ApiMetadata { get; set; }
 }

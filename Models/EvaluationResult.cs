@@ -31,5 +31,8 @@ public sealed class EvaluationResult
     public List<string> Limitations { get; set; } = [];
 
     [JsonIgnore]
+    public OpenAiResponseMetadata? ApiMetadata { get; set; }
+
+    [JsonIgnore]
     public string GeneratedPrompt { get; set; } = string.Empty;
 }

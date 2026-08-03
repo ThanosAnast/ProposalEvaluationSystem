@@ -26,14 +26,39 @@ public sealed class ComparisonCalculator(IScoreCalculator scoreCalculator) : ICo
         var llmCalculation = scoreCalculator.Calculate(profile, independentEvaluation.Criteria);
         var officialById = officialCriteria.ToDictionary(criterion => criterion.Id, StringComparer.Ordinal);
         var llmById = independentEvaluation.Criteria.ToDictionary(criterion => criterion.Id, StringComparer.Ordinal);
+        var qualitativeGroups = qualitativeDraft.Criteria
+            .GroupBy(item => item.CriterionId, StringComparer.Ordinal)
+            .ToArray();
 
-        var comparisons = profile.Criteria.Select(definition => new CriterionComparison
+        if (qualitativeGroups.Any(group => group.Count() != 1) ||
+            qualitativeGroups.Length != profile.Criteria.Count ||
+            profile.Criteria.Any(definition => qualitativeGroups.All(group => group.Key != definition.Id)))
         {
-            CriterionId = definition.Id,
-            CriterionName = definition.DisplayName,
-            OfficialScore = officialById[definition.Id].Score,
-            LlmScore = llmById[definition.Id].Score,
-            NumericDifference = llmById[definition.Id].Score - officialById[definition.Id].Score
+            throw new InvalidOperationException(
+                "The qualitative comparison must contain exactly one entry for every evaluation criterion.");
+        }
+
+        var qualitativeById = qualitativeGroups.ToDictionary(
+            group => group.Key,
+            group => group.Single(),
+            StringComparer.Ordinal);
+
+        var comparisons = profile.Criteria.Select(definition =>
+        {
+            var qualitative = qualitativeById[definition.Id];
+            return new CriterionComparison
+            {
+                CriterionId = definition.Id,
+                CriterionName = definition.DisplayName,
+                OfficialScore = officialById[definition.Id].Score,
+                LlmScore = llmById[definition.Id].Score,
+                NumericDifference = llmById[definition.Id].Score - officialById[definition.Id].Score,
+                SharedStrengths = qualitative.SharedStrengths,
+                SharedWeaknesses = qualitative.SharedWeaknesses,
+                FindingsDetectedOnlyByLlm = qualitative.FindingsDetectedOnlyByLlm,
+                FindingsPresentOnlyInEsr = qualitative.FindingsPresentOnlyInEsr,
+                Summary = qualitative.Summary
+            };
         }).ToList();
 
         return new EvaluationComparisonResult
@@ -45,10 +70,6 @@ public sealed class ComparisonCalculator(IScoreCalculator scoreCalculator) : ICo
             OfficialThresholdMet = officialCalculation.ThresholdAssessment.Passed,
             LlmThresholdMet = llmCalculation.ThresholdAssessment.Passed,
             ThresholdAgreement = officialCalculation.ThresholdAssessment.Passed == llmCalculation.ThresholdAssessment.Passed,
-            SharedStrengths = qualitativeDraft.SharedStrengths,
-            SharedWeaknesses = qualitativeDraft.SharedWeaknesses,
-            FindingsDetectedOnlyByLlm = qualitativeDraft.FindingsDetectedOnlyByLlm,
-            FindingsPresentOnlyInEsr = qualitativeDraft.FindingsPresentOnlyInEsr,
             OverallComparisonSummary = qualitativeDraft.OverallComparisonSummary,
             ComparisonLimitations = qualitativeDraft.ComparisonLimitations
         };

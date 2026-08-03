@@ -29,4 +29,12 @@ public sealed class ExperimentRunMetadata
     public long ExecutionDurationMilliseconds { get; set; }
 
     public string ApplicationVersion { get; set; } = string.Empty;
+
+    public string GitCommitSha { get; set; } = string.Empty;
+
+    public string ExperimentSchemaVersion { get; set; } = string.Empty;
+
+    public OpenAiResponseMetadata? EvaluationApiMetadata { get; set; }
+
+    public OpenAiResponseMetadata? ComparisonApiMetadata { get; set; }
 }

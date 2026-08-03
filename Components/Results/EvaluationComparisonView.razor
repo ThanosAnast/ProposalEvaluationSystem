@@ -46,20 +46,30 @@
             </div>
         </div>
 
-        <div class="row g-3">
-            <div class="col-lg-6">
-                <ComparisonList Title="Shared strengths" Items="Result.SharedStrengths" />
-            </div>
-            <div class="col-lg-6">
-                <ComparisonList Title="Shared weaknesses" Items="Result.SharedWeaknesses" />
-            </div>
-            <div class="col-lg-6">
-                <ComparisonList Title="Detected only by the LLM" Items="Result.FindingsDetectedOnlyByLlm" />
-            </div>
-            <div class="col-lg-6">
-                <ComparisonList Title="Present only in the ESR" Items="Result.FindingsPresentOnlyInEsr" />
-            </div>
-        </div>
+        @foreach (var criterion in Result.Criteria)
+        {
+            <section class="mt-4">
+                <h3 class="h5">@criterion.CriterionName</h3>
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <ComparisonList Title="Shared strengths" Items="criterion.SharedStrengths" />
+                    </div>
+                    <div class="col-lg-6">
+                        <ComparisonList Title="Shared weaknesses" Items="criterion.SharedWeaknesses" />
+                    </div>
+                    <div class="col-lg-6">
+                        <ComparisonList Title="Detected only by the LLM" Items="criterion.FindingsDetectedOnlyByLlm" />
+                    </div>
+                    <div class="col-lg-6">
+                        <ComparisonList Title="Present only in the ESR" Items="criterion.FindingsPresentOnlyInEsr" />
+                    </div>
+                </div>
+                <div class="placeholder-panel mt-3">
+                    <h4 class="h6">Criterion summary</h4>
+                    <p class="mb-0">@criterion.Summary</p>
+                </div>
+            </section>
+        }
 
         <div class="card result-card mt-3">
             <div class="card-body">
