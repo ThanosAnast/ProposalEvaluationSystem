@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -7,43 +8,49 @@ using ProposalEvaluationSystem.Models;
 
 namespace ProposalEvaluationSystem.Services;
 
-public class OpenAiEvaluationService(HttpClient httpClient, IOptions<OpenAiOptions> options) : IEvaluationService
+public sealed class OpenAiEvaluationService(
+    HttpClient httpClient,
+    IOptions<OpenAiOptions> options,
+    IEvaluationResultProcessor resultProcessor,
+    ILogger<OpenAiEvaluationService> logger) : IEvaluationService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
-
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly OpenAiOptions openAiOptions = options.Value;
 
-    public async Task<EvaluationResult> EvaluateAsync(EvaluationRequest request, CancellationToken cancellationToken = default)
+    public async Task<EvaluationResult> EvaluateAsync(
+        EvaluationRequest request,
+        CancellationToken cancellationToken = default)
     {
         var apiKey = openAiOptions.GetApiKey();
-
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new InvalidOperationException(
-                "OpenAI evaluation is selected, but no API key is configured. Set user secret 'OpenAI:ApiKey' or environment variable 'OPENAI_API_KEY'.");
+            throw new OpenAiServiceException(
+                "OpenAI is not configured. Set the OpenAI API key in user secrets or OPENAI_API_KEY.");
         }
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, openAiOptions.Endpoint);
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        httpRequest.Content = JsonContent.Create(CreateRequestPayload(request));
+        var responseBody = await SendWithRetryAsync(
+            () => CreateHttpRequest(apiKey, CreateRequestPayload(request)),
+            cancellationToken);
 
-        using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            throw new InvalidOperationException($"OpenAI API request failed with {(int)response.StatusCode} {response.ReasonPhrase}: {responseBody}");
+            var jsonResult = OpenAiResponseParser.ExtractOutputText(responseBody);
+            var draft = JsonSerializer.Deserialize<EvaluationDraft>(jsonResult, JsonOptions)
+                ?? throw new JsonException("The structured evaluation was empty.");
+
+            return resultProcessor.Process(draft, request, openAiOptions.Model);
         }
-
-        var jsonResult = ExtractOutputText(responseBody);
-        var modelResult = JsonSerializer.Deserialize<OpenAiEvaluationResponse>(jsonResult, JsonOptions)
-            ?? throw new InvalidOperationException("OpenAI returned an empty evaluation result.");
-
-        return modelResult.ToEvaluationResult(request);
+        catch (ScoreValidationException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+        {
+            logger.LogError(exception, "OpenAI returned an invalid structured evaluation.");
+            throw new OpenAiServiceException(
+                "OpenAI returned an invalid evaluation. No result was saved; please run the evaluation again.",
+                exception);
+        }
     }
 
     private object CreateRequestPayload(EvaluationRequest request) => new
@@ -54,24 +61,24 @@ public class OpenAiEvaluationService(HttpClient httpClient, IOptions<OpenAiOptio
             new
             {
                 role = "system",
-                content = new object[]
+                content = new[]
                 {
                     new
                     {
                         type = "input_text",
-                        text = GetSystemInstructions()
+                        text = "You are an expert research-proposal evaluator. Follow the supplied evaluation methodology and return only JSON matching the required schema. Use only information in the supplied inputs."
                     }
                 }
             },
             new
             {
                 role = "user",
-                content = new object[]
+                content = new[]
                 {
                     new
                     {
                         type = "input_text",
-                        text = BuildUserPrompt(request)
+                        text = request.GeneratedPrompt
                     }
                 }
             }
@@ -81,76 +88,35 @@ public class OpenAiEvaluationService(HttpClient httpClient, IOptions<OpenAiOptio
             format = new
             {
                 type = "json_schema",
-                name = "proposal_evaluation_result",
+                name = "independent_proposal_evaluation",
                 strict = true,
-                schema = GetResponseSchema()
+                schema = GetResponseSchema(request.Profile)
             }
         },
         max_output_tokens = openAiOptions.MaxOutputTokens
     };
 
-    private static string GetSystemInstructions() =>
-        """
-        You are an expert evaluator of technical and research proposals.
-        Produce an independent, evidence-based evaluation from the supplied call and proposal text.
-        Do not treat a provided ESR as ground truth; use it only as optional comparison context.
-        Use scores from 0.0 to 5.0 for each main criterion.
-        Compute totalScore as Excellence + Impact + Implementation.
-        For Horizon-style assessments, a typical funding threshold is 10.0 total and 3.0 per criterion unless the prompt states otherwise.
-        Return only JSON that matches the required schema.
-        """;
-
-    private static string BuildUserPrompt(EvaluationRequest request)
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine("Evaluation metadata:");
-        builder.AppendLine($"- Prompt template used: {request.PromptTemplateName}");
-        builder.AppendLine($"- Programme type: {request.ProgrammeType}");
-        builder.AppendLine($"- Evaluation level: {request.EvaluationLevel}");
-        builder.AppendLine();
-        builder.AppendLine("Final prompt generated from the selected template:");
-        builder.AppendLine(request.GeneratedPrompt);
-
-        return builder.ToString();
-    }
-
-    private static object GetResponseSchema() => new
+    private static object GetResponseSchema(EvaluationProfile profile) => new
     {
         type = "object",
         additionalProperties = false,
         required = new[]
         {
             "executiveSummary",
-            "excellence",
-            "impact",
-            "implementation",
-            "totalScore",
-            "thresholdAssessment",
+            "criteria",
             "finalComment",
             "confidenceLevel",
-            "limitations",
-            "realEvaluationComparisonPlaceholder"
+            "limitations"
         },
         properties = new
         {
             executiveSummary = new { type = "string" },
-            excellence = GetCriterionSchema(),
-            impact = GetCriterionSchema(),
-            implementation = GetCriterionSchema(),
-            totalScore = new { type = "number" },
-            thresholdAssessment = new
+            criteria = new
             {
-                type = "object",
-                additionalProperties = false,
-                required = new[] { "totalScore", "requiredTotalScore", "individualThresholdsMet", "overallResult", "explanation" },
-                properties = new
-                {
-                    totalScore = new { type = "number" },
-                    requiredTotalScore = new { type = "number" },
-                    individualThresholdsMet = new { type = "boolean" },
-                    overallResult = new { type = "string" },
-                    explanation = new { type = "string" }
-                }
+                type = "array",
+                minItems = profile.Criteria.Count,
+                maxItems = profile.Criteria.Count,
+                items = GetCriterionSchema(profile)
             },
             finalComment = new { type = "string" },
             confidenceLevel = new { type = "string" },
@@ -158,39 +124,142 @@ public class OpenAiEvaluationService(HttpClient httpClient, IOptions<OpenAiOptio
             {
                 type = "array",
                 items = new { type = "string" }
-            },
-            realEvaluationComparisonPlaceholder = new { type = "string" }
+            }
         }
     };
 
-    private static object GetCriterionSchema() => new
+    private static object GetCriterionSchema(EvaluationProfile profile) => new
     {
         type = "object",
         additionalProperties = false,
-        required = new[] { "score", "strengths", "weaknesses", "evidence", "assessment" },
+        required = new[] { "id", "score", "strengths", "weaknesses", "evidence", "assessment" },
         properties = new
         {
-            score = new { type = "number" },
-            strengths = new
+            id = new
             {
-                type = "array",
-                items = new { type = "string" }
+                type = "string",
+                @enum = profile.Criteria.Select(criterion => criterion.Id).ToArray()
             },
-            weaknesses = new
+            score = new
             {
-                type = "array",
-                items = new { type = "string" }
+                type = "number",
+                minimum = profile.ScoreMinimum,
+                maximum = profile.ScoreMaximum,
+                multipleOf = profile.ScoreIncrement
             },
-            evidence = new
-            {
-                type = "array",
-                items = new { type = "string" }
-            },
+            strengths = StringArraySchema(),
+            weaknesses = StringArraySchema(),
+            evidence = StringArraySchema(),
             assessment = new { type = "string" }
         }
     };
 
-    private static string ExtractOutputText(string responseBody)
+    private static object StringArraySchema() => new
+    {
+        type = "array",
+        items = new { type = "string" }
+    };
+
+    private HttpRequestMessage CreateHttpRequest(string apiKey, object payload)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, openAiOptions.Endpoint);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        request.Content = JsonContent.Create(payload);
+        return request;
+    }
+
+    private async Task<string> SendWithRetryAsync(
+        Func<HttpRequestMessage> requestFactory,
+        CancellationToken cancellationToken)
+    {
+        var attempts = Math.Clamp(openAiOptions.MaxAttempts, 1, 5);
+
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                using var request = requestFactory();
+                using var response = await httpClient.SendAsync(request, cancellationToken);
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return body;
+                }
+
+                var requestId = GetRequestId(response);
+                logger.LogError(
+                    "OpenAI evaluation request failed. StatusCode={StatusCode}, RequestId={RequestId}, Body={ResponseBody}",
+                    (int)response.StatusCode,
+                    requestId,
+                    body);
+
+                if (IsTransient(response.StatusCode) && attempt < attempts)
+                {
+                    await DelayAsync(attempt, cancellationToken);
+                    continue;
+                }
+
+                throw CreateSafeApiException(response.StatusCode);
+            }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(exception, "OpenAI evaluation request timed out on attempt {Attempt}.", attempt);
+                if (attempt < attempts)
+                {
+                    await DelayAsync(attempt, cancellationToken);
+                    continue;
+                }
+
+                throw new OpenAiServiceException("The OpenAI evaluation timed out. Please try again.", exception);
+            }
+            catch (HttpRequestException exception)
+            {
+                logger.LogWarning(exception, "Transient OpenAI evaluation transport failure on attempt {Attempt}.", attempt);
+                if (attempt < attempts)
+                {
+                    await DelayAsync(attempt, cancellationToken);
+                    continue;
+                }
+
+                throw new OpenAiServiceException(
+                    "The OpenAI evaluation service could not be reached. Please try again.",
+                    exception);
+            }
+        }
+
+        throw new OpenAiServiceException("The OpenAI evaluation could not be completed. Please try again.");
+    }
+
+    private Task DelayAsync(int attempt, CancellationToken cancellationToken)
+    {
+        var baseDelay = Math.Max(openAiOptions.InitialRetryDelayMilliseconds, 100);
+        return Task.Delay(TimeSpan.FromMilliseconds(baseDelay * Math.Pow(2, attempt - 1)), cancellationToken);
+    }
+
+    private static bool IsTransient(HttpStatusCode statusCode) =>
+        statusCode == HttpStatusCode.TooManyRequests || (int)statusCode >= 500;
+
+    private static string GetRequestId(HttpResponseMessage response) =>
+        response.Headers.TryGetValues("x-request-id", out var values)
+            ? values.FirstOrDefault() ?? "unavailable"
+            : "unavailable";
+
+    private static OpenAiServiceException CreateSafeApiException(HttpStatusCode statusCode) => statusCode switch
+    {
+        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
+            new OpenAiServiceException("OpenAI rejected the configured API credentials."),
+        HttpStatusCode.TooManyRequests =>
+            new OpenAiServiceException("OpenAI is temporarily rate limited. Please try again shortly."),
+        _ when (int)statusCode >= 500 =>
+            new OpenAiServiceException("OpenAI is temporarily unavailable. Please try again."),
+        _ => new OpenAiServiceException($"The OpenAI request failed with status {(int)statusCode}.")
+    };
+}
+
+internal static class OpenAiResponseParser
+{
+    public static string ExtractOutputText(string responseBody)
     {
         using var document = JsonDocument.Parse(responseBody);
         var root = document.RootElement;
@@ -206,7 +275,6 @@ public class OpenAiEvaluationService(HttpClient httpClient, IOptions<OpenAiOptio
         }
 
         var builder = new StringBuilder();
-
         foreach (var item in outputItems.EnumerateArray())
         {
             if (!item.TryGetProperty("content", out var contentItems) || contentItems.ValueKind != JsonValueKind.Array)
@@ -224,76 +292,8 @@ public class OpenAiEvaluationService(HttpClient httpClient, IOptions<OpenAiOptio
         }
 
         var result = builder.ToString();
-
-        if (string.IsNullOrWhiteSpace(result))
-        {
-            throw new InvalidOperationException("OpenAI response output text was empty.");
-        }
-
-        return result;
-    }
-
-    private sealed class OpenAiEvaluationResponse
-    {
-        public string ExecutiveSummary { get; set; } = string.Empty;
-
-        public OpenAiCriterionResponse Excellence { get; set; } = new();
-
-        public OpenAiCriterionResponse Impact { get; set; } = new();
-
-        public OpenAiCriterionResponse Implementation { get; set; } = new();
-
-        public decimal TotalScore { get; set; }
-
-        public ThresholdAssessment ThresholdAssessment { get; set; } = new();
-
-        public string FinalComment { get; set; } = string.Empty;
-
-        public string ConfidenceLevel { get; set; } = string.Empty;
-
-        public List<string> Limitations { get; set; } = [];
-
-        public string RealEvaluationComparisonPlaceholder { get; set; } = string.Empty;
-
-        public EvaluationResult ToEvaluationResult(EvaluationRequest request) => new()
-        {
-            PromptTemplateUsed = request.PromptTemplateName,
-            ProgrammeType = request.ProgrammeType,
-            EvaluationLevel = request.EvaluationLevel,
-            ExecutiveSummary = ExecutiveSummary,
-            Excellence = Excellence.ToCriterion("Excellence"),
-            Impact = Impact.ToCriterion("Impact"),
-            Implementation = Implementation.ToCriterion("Quality and Efficiency of Implementation"),
-            TotalScore = TotalScore,
-            ThresholdAssessment = ThresholdAssessment,
-            FinalComment = FinalComment,
-            ConfidenceLevel = ConfidenceLevel,
-            Limitations = Limitations,
-            GeneratedPrompt = request.GeneratedPrompt,
-            RealEvaluationComparisonPlaceholder = RealEvaluationComparisonPlaceholder
-        };
-    }
-
-    private sealed class OpenAiCriterionResponse
-    {
-        public decimal Score { get; set; }
-
-        public List<string> Strengths { get; set; } = [];
-
-        public List<string> Weaknesses { get; set; } = [];
-
-        public List<string> Evidence { get; set; } = [];
-
-        public string Assessment { get; set; } = string.Empty;
-
-        public CriterionEvaluation ToCriterion(string name) => new()
-        {
-            Name = name,
-            Score = Score,
-            Strengths = Strengths,
-            Weaknesses = Weaknesses,
-            Evidence = Evidence,
-            Assessment = Assessment
-        };
+        return string.IsNullOrWhiteSpace(result)
+            ? throw new InvalidOperationException("OpenAI response output text was empty.")
+            : result;
     }
 }

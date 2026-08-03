@@ -1,0 +1,26 @@
+<div class="card result-card h-100">
+    <div class="card-body">
+        <h3 class="h6">@Title</h3>
+        @if (Items.Count == 0)
+        {
+            <p class="text-muted mb-0">None identified.</p>
+        }
+        else
+        {
+            <ul class="mb-0">
+                @foreach (var item in Items)
+                {
+                    <li>@item</li>
+                }
+            </ul>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyCollection<string> Items { get; set; } = [];
+}

@@ -1,0 +1,90 @@
+@page "/experiment-history"
+@rendermode InteractiveServer
+
+@inject IExperimentRepository ExperimentRepository
+
+<PageTitle>Experiment History</PageTitle>
+
+<div class="workspace">
+    <div class="page-heading">
+        <div>
+            <h1>Experiment History</h1>
+            <p class="text-muted mb-0">Locally stored reproducibility metadata and evaluation outputs.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-success" href="api/experiments/export.csv">Export Summary CSV</a>
+            <a class="btn btn-outline-primary" href="">Back to Evaluation</a>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+    else if (isLoading)
+    {
+        <p>Loading experiment history…</p>
+    }
+    else if (summaries.Count == 0)
+    {
+        <div class="alert alert-info">No experiment runs have been saved yet.</div>
+    }
+    else
+    {
+        <div class="card section-card">
+            <div class="card-body table-responsive">
+                <table class="table table-sm align-middle history-table">
+                    <thead>
+                        <tr>
+                            <th>Dataset ID</th>
+                            <th>Run ID</th>
+                            <th>Date (UTC)</th>
+                            <th>Profile</th>
+                            <th>Model</th>
+                            <th class="text-end">Total</th>
+                            <th>Threshold</th>
+                            <th>ESR Comparison</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var summary in summaries)
+                        {
+                            <tr>
+                                <td>@summary.DatasetId</td>
+                                <td><code>@summary.RunId</code></td>
+                                <td>@summary.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                <td>@summary.EvaluationProfileId</td>
+                                <td>@summary.ModelName</td>
+                                <td class="text-end">@summary.TotalScore.ToString("0.0")</td>
+                                <td>@summary.ThresholdResult</td>
+                                <td>@(summary.HasEsrComparison ? "Yes" : "No")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<ExperimentRunSummary> summaries = [];
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            summaries = await ExperimentRepository.GetSummariesAsync();
+        }
+        catch (Exception exception)
+        {
+            errorMessage = $"Experiment history could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

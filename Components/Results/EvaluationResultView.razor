@@ -3,10 +3,12 @@
     <section class="result-stack" id="evaluation-result">
         <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
             <div>
-                <h2 class="h4 mb-1">Structured Evaluation Report</h2>
-                <div class="text-muted small">@Result.PromptTemplateUsed · @Result.ProgrammeType · @Result.EvaluationLevel</div>
+                <h2 class="h4 mb-1">Independent Evaluation</h2>
+                <div class="text-muted small">@Result.PromptTemplateUsed · @Result.ProgrammeType · @Result.ModelName</div>
             </div>
-            <span class="badge text-bg-warning result-badge">@Result.ThresholdAssessment.OverallResult</span>
+            <span class="badge @(Result.ThresholdAssessment.Passed ? "text-bg-success" : "text-bg-warning") result-badge">
+                @Result.ThresholdAssessment.OverallResult
+            </span>
         </div>
 
         <div class="card result-card">
@@ -23,25 +25,16 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td>Excellence</td>
-                                <td class="text-end">@Result.Excellence.Score.ToString("0.0")</td>
-                            </tr>
-                            <tr>
-                                <td>Impact</td>
-                                <td class="text-end">@Result.Impact.Score.ToString("0.0")</td>
-                            </tr>
-                            <tr>
-                                <td>Quality and Efficiency of Implementation</td>
-                                <td class="text-end">@Result.Implementation.Score.ToString("0.0")</td>
-                            </tr>
+                            @foreach (var criterion in Result.Criteria)
+                            {
+                                <tr>
+                                    <td>@criterion.Name</td>
+                                    <td class="text-end">@criterion.Score.ToString("0.0")</td>
+                                </tr>
+                            }
                             <tr class="fw-semibold">
                                 <td>Total score</td>
-                                <td class="text-end">@Result.TotalScore.ToString("0.0")</td>
-                            </tr>
-                            <tr>
-                                <td>Threshold result</td>
-                                <td class="text-end">@Result.ThresholdAssessment.OverallResult</td>
+                                <td class="text-end">@Result.TotalScore.ToString("0.0") / @Result.ThresholdAssessment.MaximumTotalScore.ToString("0.0")</td>
                             </tr>
                         </tbody>
                     </table>
@@ -51,9 +44,10 @@
             </div>
         </div>
 
-        <CriterionEvaluationView Criterion="Result.Excellence" />
-        <CriterionEvaluationView Criterion="Result.Impact" />
-        <CriterionEvaluationView Criterion="Result.Implementation" />
+        @foreach (var criterion in Result.Criteria)
+        {
+            <CriterionEvaluationView Criterion="criterion" />
+        }
 
         <div class="card result-card">
             <div class="card-body">
@@ -79,14 +73,9 @@
         </div>
 
         <details class="details-panel">
-            <summary>Generated prompt used for this evaluation</summary>
+            <summary>Generated independent-evaluation prompt</summary>
             <pre class="prompt-output mt-3">@Result.GeneratedPrompt</pre>
         </details>
-
-        <div class="placeholder-panel">
-            <h3 class="h6">Future ESR Comparison</h3>
-            <p class="mb-0">@Result.RealEvaluationComparisonPlaceholder</p>
-        </div>
     </section>
 }
 

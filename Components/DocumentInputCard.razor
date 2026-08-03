@@ -41,8 +41,8 @@
             <label class="form-label small text-muted" for="@TextAreaId">Extracted or pasted text</label>
             <textarea id="@TextAreaId"
                       class="form-control document-textarea"
-                      @bind="Document.ExtractedText"
-                      @bind:event="oninput"
+                      value="@Document.ExtractedText"
+                      @oninput="HandleTextInput"
                       placeholder="Paste text here if upload is unavailable or extraction is incomplete."></textarea>
         </div>
 
@@ -69,9 +69,19 @@
     [Parameter, EditorRequired]
     public EventCallback ClearRequested { get; set; }
 
+    [Parameter, EditorRequired]
+    public EventCallback<string> TextChanged { get; set; }
+
     private string TextAreaId => $"{Title.Replace(' ', '-').ToLowerInvariant()}-text";
 
     private bool IsEmpty => string.IsNullOrWhiteSpace(Document.FileName) && string.IsNullOrWhiteSpace(Document.ExtractedText);
 
     private Task HandleFileSelected(InputFileChangeEventArgs args) => FileSelected.InvokeAsync(args);
+
+    private async Task HandleTextInput(ChangeEventArgs args)
+    {
+        Document.ExtractedText = args.Value?.ToString() ?? string.Empty;
+        Document.ExtractionSucceeded = !string.IsNullOrWhiteSpace(Document.ExtractedText);
+        await TextChanged.InvokeAsync(Document.ExtractedText);
+    }
 }

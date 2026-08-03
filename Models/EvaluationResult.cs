@@ -1,20 +1,24 @@
+using System.Text.Json.Serialization;
+
 namespace ProposalEvaluationSystem.Models;
 
-public class EvaluationResult
+public sealed class EvaluationResult
 {
     public string PromptTemplateUsed { get; set; } = string.Empty;
 
+    public string EvaluationProfileId { get; set; } = string.Empty;
+
     public ProgrammeType ProgrammeType { get; set; }
 
-    public EvaluationLevel EvaluationLevel { get; set; }
+    public string ModelName { get; set; } = string.Empty;
+
+    public string PromptContentSha256 { get; set; } = string.Empty;
+
+    public string InputFingerprint { get; set; } = string.Empty;
 
     public string ExecutiveSummary { get; set; } = string.Empty;
 
-    public CriterionEvaluation Excellence { get; set; } = new() { Name = "Excellence" };
-
-    public CriterionEvaluation Impact { get; set; } = new() { Name = "Impact" };
-
-    public CriterionEvaluation Implementation { get; set; } = new() { Name = "Quality and Efficiency of Implementation" };
+    public List<CriterionEvaluation> Criteria { get; set; } = [];
 
     public decimal TotalScore { get; set; }
 
@@ -26,7 +30,6 @@ public class EvaluationResult
 
     public List<string> Limitations { get; set; } = [];
 
+    [JsonIgnore]
     public string GeneratedPrompt { get; set; } = string.Empty;
-
-    public string RealEvaluationComparisonPlaceholder { get; set; } = string.Empty;
 }

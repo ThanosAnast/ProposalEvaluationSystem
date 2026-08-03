@@ -12,8 +12,14 @@ public class OpenAiOptions
 
     public int TimeoutSeconds { get; set; } = 180;
 
+    public int MaxAttempts { get; set; } = 3;
+
+    public int InitialRetryDelayMilliseconds { get; set; } = 500;
+
     public string? GetApiKey() =>
         string.IsNullOrWhiteSpace(ApiKey)
             ? Environment.GetEnvironmentVariable("OPENAI_API_KEY")
             : ApiKey;
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(GetApiKey());
 }

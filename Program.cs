@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using ProposalEvaluationSystem.Components;
@@ -9,7 +10,6 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 
-// Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -17,32 +17,62 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "DataProtectionKeys")));
 
 builder.Services.Configure<OpenAiOptions>(builder.Configuration.GetSection("OpenAI"));
+builder.Services.Configure<ExperimentsOptions>(builder.Configuration.GetSection("Experiments"));
+
 builder.Services.AddSingleton<IDocumentTextExtractor, DocumentTextExtractor>();
 builder.Services.AddSingleton<IPromptTemplateService, FilePromptTemplateService>();
 builder.Services.AddSingleton<IPromptBuilder, PromptBuilder>();
-builder.Services.AddSingleton<MockEvaluationService>();
+builder.Services.AddSingleton<IEvaluationProfileService, EvaluationProfileService>();
+builder.Services.AddSingleton<IScoreCalculator, ScoreCalculator>();
+builder.Services.AddSingleton<IEvaluationResultProcessor, EvaluationResultProcessor>();
+builder.Services.AddSingleton<IComparisonCalculator, ComparisonCalculator>();
+builder.Services.AddSingleton<IExperimentRepository, FileExperimentRepository>();
+builder.Services.AddSingleton<IExperimentRunFactory, ExperimentRunFactory>();
+builder.Services.AddSingleton<IExperimentCsvExporter, ExperimentCsvExporter>();
+builder.Services.AddScoped<EvaluationWorkflowState>();
+
 builder.Services.AddHttpClient<OpenAiEvaluationService>((serviceProvider, httpClient) =>
 {
     var openAiOptions = serviceProvider.GetRequiredService<IOptions<OpenAiOptions>>().Value;
     httpClient.Timeout = TimeSpan.FromSeconds(openAiOptions.TimeoutSeconds);
 });
-builder.Services.AddSingleton<IEvaluationRunner, EvaluationRunner>();
-builder.Services.AddSingleton<IEvaluationService, MockEvaluationService>();
+builder.Services.AddScoped<IEvaluationService>(
+    serviceProvider => serviceProvider.GetRequiredService<OpenAiEvaluationService>());
+builder.Services.AddScoped<IEvaluationRunner, EvaluationRunner>();
+
+builder.Services.AddHttpClient<OpenAiEsrComparisonService>((serviceProvider, httpClient) =>
+{
+    var openAiOptions = serviceProvider.GetRequiredService<IOptions<OpenAiOptions>>().Value;
+    httpClient.Timeout = TimeSpan.FromSeconds(openAiOptions.TimeoutSeconds);
+});
+builder.Services.AddScoped<IEsrComparisonService>(
+    serviceProvider => serviceProvider.GetRequiredService<OpenAiEsrComparisonService>());
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
+
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-
 app.UseAntiforgery();
-
 app.MapStaticAssets();
+
+app.MapGet("/api/experiments/export.csv", async (
+    IExperimentRepository repository,
+    IExperimentCsvExporter exporter,
+    CancellationToken cancellationToken) =>
+{
+    var summaries = await repository.GetSummariesAsync(cancellationToken);
+    var csv = exporter.Export(summaries);
+    return Results.File(
+        Encoding.UTF8.GetBytes(csv),
+        "text/csv; charset=utf-8",
+        $"experiment-summary-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
+});
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

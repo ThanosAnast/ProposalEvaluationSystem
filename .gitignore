@@ -11,14 +11,24 @@ obj/
 
 ## Runtime and local generated files
 DataProtectionKeys/
+App_Data/
+ExperimentRuns/
 *.log
 run.err
 run.log
 
 ## Local secrets
 secrets.json
+*.secrets.json
+.env
+.env.*
 *.Development.local.json
 *.Local.json
+
+## Local SDK and package caches
+.dotnet10/
+.dotnet-cli-home/
+.nuget/
 
 ## Test and coverage output
 TestResults/

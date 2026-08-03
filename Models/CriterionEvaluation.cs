@@ -1,7 +1,9 @@
 namespace ProposalEvaluationSystem.Models;
 
-public class CriterionEvaluation
+public sealed class CriterionEvaluation
 {
+    public string Id { get; set; } = string.Empty;
+
     public string Name { get; set; } = string.Empty;
 
     public decimal Score { get; set; }

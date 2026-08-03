@@ -1,0 +1,83 @@
+@if (Result is not null)
+{
+    <section class="result-stack" id="comparison-result">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+            <h2 class="h4 mb-1">ESR Comparison</h2>
+            <span class="badge @(Result.ThresholdAgreement ? "text-bg-success" : "text-bg-warning") result-badge">
+                Threshold @(Result.ThresholdAgreement ? "agreement" : "disagreement")
+            </span>
+        </div>
+
+        <div class="card result-card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle score-table">
+                        <thead>
+                            <tr>
+                                <th>Criterion</th>
+                                <th class="text-end">Official ESR</th>
+                                <th class="text-end">LLM</th>
+                                <th class="text-end">Difference (LLM − ESR)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var criterion in Result.Criteria)
+                            {
+                                <tr>
+                                    <td>@criterion.CriterionName</td>
+                                    <td class="text-end">@criterion.OfficialScore.ToString("0.0")</td>
+                                    <td class="text-end">@criterion.LlmScore.ToString("0.0")</td>
+                                    <td class="text-end">@criterion.NumericDifference.ToString("+0.0;-0.0;0.0")</td>
+                                </tr>
+                            }
+                            <tr class="fw-semibold">
+                                <td>Total</td>
+                                <td class="text-end">@Result.OfficialTotalScore.ToString("0.0")</td>
+                                <td class="text-end">@Result.LlmTotalScore.ToString("0.0")</td>
+                                <td class="text-end">@Result.TotalScoreDifference.ToString("+0.0;-0.0;0.0")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="mb-0">
+                    Official threshold: <strong>@(Result.OfficialThresholdMet ? "met" : "not met")</strong> ·
+                    LLM threshold: <strong>@(Result.LlmThresholdMet ? "met" : "not met")</strong>
+                </p>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <ComparisonList Title="Shared strengths" Items="Result.SharedStrengths" />
+            </div>
+            <div class="col-lg-6">
+                <ComparisonList Title="Shared weaknesses" Items="Result.SharedWeaknesses" />
+            </div>
+            <div class="col-lg-6">
+                <ComparisonList Title="Detected only by the LLM" Items="Result.FindingsDetectedOnlyByLlm" />
+            </div>
+            <div class="col-lg-6">
+                <ComparisonList Title="Present only in the ESR" Items="Result.FindingsPresentOnlyInEsr" />
+            </div>
+        </div>
+
+        <div class="card result-card mt-3">
+            <div class="card-body">
+                <h3 class="h5">Overall Comparison Summary</h3>
+                <p>@Result.OverallComparisonSummary</p>
+                <h3 class="h6">Limitations</h3>
+                <ul class="mb-0">
+                    @foreach (var limitation in Result.ComparisonLimitations)
+                    {
+                        <li>@limitation</li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public EvaluationComparisonResult? Result { get; set; }
+}

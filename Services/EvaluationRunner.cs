@@ -2,15 +2,28 @@ using ProposalEvaluationSystem.Models;
 
 namespace ProposalEvaluationSystem.Services;
 
-public class EvaluationRunner(
-    MockEvaluationService mockEvaluationService,
-    OpenAiEvaluationService openAiEvaluationService) : IEvaluationRunner
+public sealed class EvaluationRunner(IEvaluationService evaluationService) : IEvaluationRunner, IDisposable
 {
-    public Task<EvaluationResult> EvaluateAsync(EvaluationEngine engine, EvaluationRequest request, CancellationToken cancellationToken = default) =>
-        engine switch
+    private readonly SemaphoreSlim requestGate = new(1, 1);
+
+    public async Task<EvaluationResult> EvaluateAsync(
+        EvaluationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await requestGate.WaitAsync(0, cancellationToken))
         {
-            EvaluationEngine.Mock => mockEvaluationService.EvaluateAsync(request, cancellationToken),
-            EvaluationEngine.OpenAI => openAiEvaluationService.EvaluateAsync(request, cancellationToken),
-            _ => throw new ArgumentOutOfRangeException(nameof(engine), engine, "Unsupported evaluation engine.")
-        };
+            throw new InvalidOperationException("An independent evaluation is already running.");
+        }
+
+        try
+        {
+            return await evaluationService.EvaluateAsync(request, cancellationToken);
+        }
+        finally
+        {
+            requestGate.Release();
+        }
+    }
+
+    public void Dispose() => requestGate.Dispose();
 }

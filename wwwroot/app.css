@@ -172,6 +172,19 @@ h1:focus {
     overflow: auto;
 }
 
+.independent-panel {
+    border-left: 4px solid #198754;
+}
+
+.comparison-panel {
+    border-left: 4px solid #0d6efd;
+}
+
+.history-table td,
+.history-table th {
+    white-space: nowrap;
+}
+
 .valid.modified:not([type=checkbox]) {
     outline: 1px solid #26b050;
 }
