@@ -1,41 +1,95 @@
 <div class="card result-card">
     <div class="card-body">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-            <h3 class="h5 mb-0">@Criterion.Name</h3>
-            <span class="score-pill">@Criterion.Score.ToString("0.0")</span>
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+            <div>
+                <h3 class="h5 mb-1">@Criterion.Name</h3>
+                <div class="d-flex flex-wrap gap-2">
+                    @if (Definition?.WeightPercentage is decimal weight)
+                    {
+                        <span class="badge text-bg-light">Weight: @FormatScore(weight)%</span>
+                    }
+                    @if (Definition?.Threshold is decimal threshold)
+                    {
+                        <span class="badge text-bg-light">Threshold: @FormatScore(threshold)</span>
+                    }
+                </div>
+            </div>
+            <span class="score-pill">
+                @FormatScore(Criterion.Score)
+                @if (Definition is not null)
+                {
+                    <span>&nbsp;/&nbsp;@FormatScore(Definition.ScoreMaximum)</span>
+                }
+            </span>
         </div>
+
+        <h4 class="h6">Summary</h4>
+        <p>@Criterion.Summary</p>
 
         <div class="row g-3">
             <div class="col-lg-6">
                 <h4 class="h6">Strengths</h4>
-                <ul class="mb-0">
-                    @foreach (var item in Criterion.Strengths)
-                    {
-                        <li>@item</li>
-                    }
-                </ul>
+                @if (Criterion.Strengths.Count == 0)
+                {
+                    <p class="text-muted mb-0">None identified.</p>
+                }
+                else
+                {
+                    <ul class="mb-0">
+                        @foreach (var item in Criterion.Strengths)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
             </div>
             <div class="col-lg-6">
-                <h4 class="h6">Weaknesses</h4>
-                <ul class="mb-0">
-                    @foreach (var item in Criterion.Weaknesses)
-                    {
-                        <li>@item</li>
-                    }
-                </ul>
+                <h4 class="h6">Shortcomings</h4>
+                @if (Criterion.Shortcomings.Count == 0)
+                {
+                    <p class="text-muted mb-0">None identified.</p>
+                }
+                else
+                {
+                    <ul class="mb-0">
+                        @foreach (var item in Criterion.Shortcomings)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
             </div>
-            <div class="col-12">
+            <div class="col-lg-6">
                 <h4 class="h6">Evidence</h4>
-                <ul class="mb-0">
-                    @foreach (var item in Criterion.Evidence)
-                    {
-                        <li>@item</li>
-                    }
-                </ul>
+                @if (Criterion.Evidence.Count == 0)
+                {
+                    <p class="text-muted mb-0">None identified.</p>
+                }
+                else
+                {
+                    <ul class="mb-0">
+                        @foreach (var item in Criterion.Evidence)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
             </div>
-            <div class="col-12">
-                <h4 class="h6">Assessment</h4>
-                <p class="mb-0">@Criterion.Assessment</p>
+            <div class="col-lg-6">
+                <h4 class="h6">Limitations</h4>
+                @if (Criterion.Limitations.Count == 0)
+                {
+                    <p class="text-muted mb-0">None identified.</p>
+                }
+                else
+                {
+                    <ul class="mb-0">
+                        @foreach (var item in Criterion.Limitations)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
             </div>
         </div>
     </div>
@@ -44,4 +98,10 @@
 @code {
     [Parameter, EditorRequired]
     public CriterionEvaluation Criterion { get; set; } = new();
+
+    [Parameter]
+    public CriterionDefinition? Definition { get; set; }
+
+    private static string FormatScore(decimal score) =>
+        score.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 }

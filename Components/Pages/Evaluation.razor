@@ -22,8 +22,8 @@
 <div class="workspace">
     <div class="page-heading">
         <div>
-            <h1>Technical Proposal Evaluation</h1>
-            <p class="text-muted mb-0">Independent Horizon evaluation followed by an optional, explicitly separate ESR comparison.</p>
+            <h1>Proposal Evaluation</h1>
+            <p class="text-muted mb-0">Independent proposal evaluation followed by an optional, explicitly separate ESR comparison.</p>
         </div>
         <a class="btn btn-outline-primary" href="experiment-history">Experiment History</a>
     </div>
@@ -57,12 +57,12 @@
                            class="form-control"
                            @bind="datasetId"
                            @bind:event="oninput"
-                           placeholder="e.g. horizon-dataset-001" />
+                           placeholder="e.g. proposal-dataset-001" />
                     <div class="form-text">Letters, numbers, periods, underscores, and hyphens only.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label" for="evaluationProfile">Evaluation Profile</label>
-                    <select id="evaluationProfile" class="form-select" value="@selectedProfileId" @onchange="HandleProfileChanged">
+                    <select id="evaluationProfile" class="form-select" value="@selectedProfileId" @onchange="HandleProfileChanged" disabled="@isBusy">
                         @foreach (var profile in enabledProfiles)
                         {
                             <option value="@profile.Id">@profile.DisplayName</option>
@@ -80,7 +80,7 @@
         </div>
         <div class="row g-3">
             <div class="col-xl-4">
-                <DocumentInputCard Title="Call / Topic Description"
+                <DocumentInputCard Title="Evaluation Context"
                                    Document="callDocument"
                                    InputVersion="GetInputVersion(DocumentType.CallDescription)"
                                    FileSelected="@(args => HandleFileSelected(DocumentType.CallDescription, args))"
@@ -115,7 +115,7 @@
                         <h2>1. Independent Evaluation</h2>
                         <span class="text-muted small">@SelectedProfile.PromptTemplateFileName</span>
                     </div>
-                    <p class="text-muted">Uses only the Call, Proposal, and selected evaluation profile. ESR content is excluded.</p>
+                    <p class="text-muted">Uses only the Evaluation Context, Proposal, and selected evaluation profile. ESR content is excluded.</p>
                     <div class="d-flex flex-wrap gap-2">
                         <button class="btn btn-outline-primary" type="button" @onclick="PreviewPromptAsync" disabled="@(!CanPreviewPrompt)">Preview Prompt</button>
                         <button class="btn btn-success" type="button" @onclick="RunIndependentEvaluationAsync" disabled="@(!CanRunIndependentEvaluation)">Run Independent Evaluation</button>
@@ -136,21 +136,31 @@
                     </div>
                     <p class="text-muted">Confirm the official ESR scores. Numeric differences and threshold agreement are calculated by the application.</p>
                     <div class="row g-2">
-                        <div class="col-md-4">
-                            <label class="form-label" for="officialExcellence">Excellence</label>
-                            <input id="officialExcellence" type="number" min="0" max="5" step="0.5" class="form-control"
-                                   @bind="officialExcellence" @bind:event="oninput" @bind:after="ReferenceInputsChanged" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label" for="officialImpact">Impact</label>
-                            <input id="officialImpact" type="number" min="0" max="5" step="0.5" class="form-control"
-                                   @bind="officialImpact" @bind:event="oninput" @bind:after="ReferenceInputsChanged" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label" for="officialImplementation">Implementation</label>
-                            <input id="officialImplementation" type="number" min="0" max="5" step="0.5" class="form-control"
-                                   @bind="officialImplementation" @bind:event="oninput" @bind:after="ReferenceInputsChanged" />
-                        </div>
+                        @foreach (var criterion in SelectedProfile.Criteria)
+                        {
+                            var criterionId = criterion.Id;
+                            <div @key="@(selectedProfileId + ":" + criterionId)" class="col-md-6 col-xl-4">
+                                <label class="form-label" for="@GetOfficialScoreInputId(criterionId)">@criterion.DisplayName</label>
+                                <input id="@GetOfficialScoreInputId(criterionId)"
+                                       type="number"
+                                       min="@FormatScoreAttribute(criterion.ScoreMinimum)"
+                                       max="@FormatScoreAttribute(criterion.ScoreMaximum)"
+                                       step="@FormatScoreStep(criterion.ScoreIncrement)"
+                                       class="form-control"
+                                       aria-describedby="@GetOfficialScoreHelpId(criterionId)"
+                                       disabled="@isBusy"
+                                       @bind="officialScores[criterionId]"
+                                       @bind:event="oninput"
+                                       @bind:after="ReferenceInputsChanged" />
+                                <div id="@GetOfficialScoreHelpId(criterionId)" class="form-text">
+                                    @FormatScore(criterion.ScoreMinimum) to @FormatScore(criterion.ScoreMaximum)
+                                    @if (criterion.WeightPercentage.HasValue)
+                                    {
+                                        <span> &middot; Weight @FormatScore(criterion.WeightPercentage.Value)%</span>
+                                    }
+                                </div>
+                            </div>
+                        }
                     </div>
                     <button class="btn btn-primary mt-3" type="button" @onclick="CompareWithEsrAsync" disabled="@(!CanCompareWithEsr)">Compare with ESR</button>
                 </div>
@@ -204,11 +214,9 @@
     private ProcessedDocument proposalDocument = NewDocument(DocumentType.Proposal);
     private ProcessedDocument esrDocument = NewDocument(DocumentType.EvaluationSummaryReport);
     private IReadOnlyList<EvaluationProfile> enabledProfiles = [];
-    private string selectedProfileId = EvaluationProfiles.HorizonEssentialId;
+    private string selectedProfileId = EvaluationProfiles.DefaultId;
     private string datasetId = string.Empty;
-    private decimal? officialExcellence;
-    private decimal? officialImpact;
-    private decimal? officialImplementation;
+    private readonly Dictionary<string, decimal?> officialScores = new(StringComparer.Ordinal);
     private string? errorMessage;
     private string? statusMessage;
     private string? activePromptContent;
@@ -234,10 +242,10 @@
         !string.IsNullOrWhiteSpace(datasetId) &&
         OpenAiConfiguration.Value.IsConfigured;
 
-    private bool HasValidReferenceScores =>
-        officialExcellence.HasValue && ScoreCalculator.IsValidScore(SelectedProfile, officialExcellence.Value) &&
-        officialImpact.HasValue && ScoreCalculator.IsValidScore(SelectedProfile, officialImpact.Value) &&
-        officialImplementation.HasValue && ScoreCalculator.IsValidScore(SelectedProfile, officialImplementation.Value);
+    private bool HasValidReferenceScores => SelectedProfile.Criteria.All(criterion =>
+        officialScores.TryGetValue(criterion.Id, out var score) &&
+        score.HasValue &&
+        ScoreCalculator.IsValidScore(SelectedProfile, criterion.Id, score.Value));
 
     private bool CanCompareWithEsr => !isBusy &&
         OpenAiConfiguration.Value.IsConfigured &&
@@ -257,7 +265,11 @@
             throw new InvalidOperationException("No enabled evaluation profiles are configured.");
         }
 
-        selectedProfileId = enabledProfiles[0].Id;
+        selectedProfileId = enabledProfiles.Any(profile =>
+            string.Equals(profile.Id, EvaluationProfiles.DefaultId, StringComparison.Ordinal))
+            ? EvaluationProfiles.DefaultId
+            : enabledProfiles[0].Id;
+        InitializeReferenceScores(SelectedProfile);
     }
 
     private void HandleProfileChanged(ChangeEventArgs args)
@@ -270,7 +282,9 @@
         }
 
         selectedProfileId = requestedId;
+        InitializeReferenceScores(SelectedProfile);
         InvalidateIndependentState();
+        runErrors.Clear();
         ClearMessages();
     }
 
@@ -317,6 +331,13 @@
         try
         {
             var request = await BuildIndependentRequestAsync();
+            if (!await IsIndependentRequestCurrentAsync(request))
+            {
+                InvalidateIndependentState();
+                errorMessage = "The evaluation inputs changed while the prompt was being prepared. Preview the prompt again.";
+                return;
+            }
+
             if (WorkflowState.IndependentEvaluation is not null &&
                 !string.Equals(WorkflowState.IndependentEvaluation.InputFingerprint, request.InputFingerprint, StringComparison.Ordinal))
             {
@@ -352,10 +373,18 @@
             WorkflowState.InvalidateIndependentInputs();
             WorkflowState.GeneratedPrompt = request.GeneratedPrompt;
             activePromptContent = request.PromptTemplateContent;
-            WorkflowState.IndependentEvaluation = await EvaluationRunner.EvaluateAsync(request, operationCancellation.Token);
+            var result = await EvaluationRunner.EvaluateAsync(request, operationCancellation.Token);
+            if (!await IsIndependentRequestCurrentAsync(request, operationCancellation.Token))
+            {
+                InvalidateIndependentState();
+                statusMessage = "The evaluation inputs changed while the evaluation was running. The stale result was discarded; run the evaluation again.";
+                return;
+            }
+
+            WorkflowState.IndependentEvaluation = result;
             stopwatch.Stop();
             evaluationDuration = stopwatch.Elapsed;
-            statusMessage = "Independent Horizon evaluation completed.";
+            statusMessage = "Independent evaluation completed.";
         }
         catch (OperationCanceledException)
         {
@@ -393,17 +422,33 @@
                 return;
             }
 
+            var independentEvaluation = WorkflowState.IndependentEvaluation!;
+            var profile = SelectedProfile;
+            var referenceEvaluation = CreateReferenceEvaluation();
+            var esrText = esrDocument.ExtractedText;
             var comparisonRequest = new EsrComparisonRequest
             {
-                IndependentEvaluation = WorkflowState.IndependentEvaluation!,
-                ReferenceEvaluation = CreateReferenceEvaluation(),
-                Profile = SelectedProfile,
-                EsrText = esrDocument.ExtractedText
+                IndependentEvaluation = independentEvaluation,
+                ReferenceEvaluation = referenceEvaluation,
+                Profile = profile,
+                EsrText = esrText
             };
 
-            WorkflowState.EsrComparison = await EsrComparisonService.CompareAsync(
+            var comparison = await EsrComparisonService.CompareAsync(
                 comparisonRequest,
                 operationCancellation.Token);
+            if (!ReferenceInputsAreCurrent(
+                    profile.Id,
+                    independentEvaluation.InputFingerprint,
+                    esrText,
+                    referenceEvaluation))
+            {
+                WorkflowState.InvalidateReferenceInputs();
+                statusMessage = "The ESR inputs changed while the comparison was running. The stale comparison was discarded; run the comparison again.";
+                return;
+            }
+
+            WorkflowState.EsrComparison = comparison;
             statusMessage = "ESR comparison completed without changing the independent evaluation.";
         }
         catch (OperationCanceledException)
@@ -481,7 +526,7 @@
         if (string.IsNullOrWhiteSpace(callDocument.ExtractedText) ||
             string.IsNullOrWhiteSpace(proposalDocument.ExtractedText))
         {
-            throw new InvalidOperationException("Call and Proposal text are required for independent evaluation.");
+            throw new InvalidOperationException("Evaluation Context and Proposal text are required for independent evaluation.");
         }
 
         var profile = SelectedProfile;
@@ -533,7 +578,7 @@
             StringComparison.Ordinal))
         {
             InvalidateIndependentState();
-            errorMessage = "The Call, Proposal, profile, or prompt version changed. Run a new independent evaluation before comparing or saving.";
+            errorMessage = "The Evaluation Context, Proposal, profile, or prompt version changed. Run a new independent evaluation before comparing or saving.";
             return false;
         }
 
@@ -541,27 +586,65 @@
         return true;
     }
 
-    private ReferenceEvaluation CreateReferenceEvaluation() => new()
+    private async Task<bool> IsIndependentRequestCurrentAsync(
+        EvaluationRequest request,
+        CancellationToken cancellationToken = default)
     {
-        Criteria =
-        [
-            new ReferenceCriterionScore
-            {
-                CriterionId = EvaluationCriterionIds.Excellence,
-                OfficialScore = officialExcellence!.Value
-            },
-            new ReferenceCriterionScore
-            {
-                CriterionId = EvaluationCriterionIds.Impact,
-                OfficialScore = officialImpact!.Value
-            },
-            new ReferenceCriterionScore
-            {
-                CriterionId = EvaluationCriterionIds.Implementation,
-                OfficialScore = officialImplementation!.Value
-            }
-        ]
-    };
+        var profile = SelectedProfile;
+        var currentPromptContent = await PromptTemplateService.GetTemplateContentAsync(
+            profile.PromptTemplateFileName,
+            cancellationToken);
+        var currentFingerprint = ContentHashService.ComputeInputFingerprint(
+            callDocument,
+            proposalDocument,
+            profile.Id,
+            currentPromptContent);
+
+        return string.Equals(selectedProfileId, profile.Id, StringComparison.Ordinal) &&
+            string.Equals(currentFingerprint, request.InputFingerprint, StringComparison.Ordinal);
+    }
+
+    private ReferenceEvaluation CreateReferenceEvaluation()
+    {
+        if (!HasValidReferenceScores)
+        {
+            throw new InvalidOperationException("Enter a valid official ESR score for every criterion.");
+        }
+
+        return new ReferenceEvaluation
+        {
+            Criteria = SelectedProfile.Criteria
+                .Select(criterion => new ReferenceCriterionScore
+                {
+                    CriterionId = criterion.Id,
+                    OfficialScore = officialScores[criterion.Id]!.Value
+                })
+                .ToList()
+        };
+    }
+
+    private bool ReferenceInputsAreCurrent(
+        string profileId,
+        string independentInputFingerprint,
+        string esrText,
+        ReferenceEvaluation referenceEvaluation)
+    {
+        if (!string.Equals(SelectedProfile.Id, profileId, StringComparison.Ordinal) ||
+            WorkflowState.IndependentEvaluation is null ||
+            !string.Equals(
+                WorkflowState.IndependentEvaluation.InputFingerprint,
+                independentInputFingerprint,
+                StringComparison.Ordinal) ||
+            !string.Equals(esrDocument.ExtractedText, esrText, StringComparison.Ordinal) ||
+            referenceEvaluation.Criteria.Count != SelectedProfile.Criteria.Count)
+        {
+            return false;
+        }
+
+        return referenceEvaluation.Criteria.All(referenceScore =>
+            officialScores.TryGetValue(referenceScore.CriterionId, out var currentScore) &&
+            currentScore == referenceScore.OfficialScore);
+    }
 
     private void ReferenceInputsChanged() => WorkflowState.InvalidateReferenceInputs();
 
@@ -582,6 +665,30 @@
         activePromptContent = null;
         evaluationDuration = TimeSpan.Zero;
     }
+
+    private void InitializeReferenceScores(EvaluationProfile profile)
+    {
+        officialScores.Clear();
+        foreach (var criterion in profile.Criteria)
+        {
+            officialScores[criterion.Id] = null;
+        }
+
+        WorkflowState.InvalidateReferenceInputs();
+    }
+
+    private static string GetOfficialScoreInputId(string criterionId) => $"official-{criterionId}";
+
+    private static string GetOfficialScoreHelpId(string criterionId) => $"official-{criterionId}-help";
+
+    private static string FormatScore(decimal score) =>
+        score.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string FormatScoreAttribute(decimal score) =>
+        score.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string FormatScoreStep(decimal? scoreIncrement) =>
+        scoreIncrement?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "any";
 
     private void CancelOperation() => operationCancellation?.Cancel();
 

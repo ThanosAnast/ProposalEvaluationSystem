@@ -6,5 +6,5 @@ public interface IScoreCalculator
 {
     ScoreCalculation Calculate(EvaluationProfile profile, IReadOnlyCollection<CriterionEvaluation> criteria);
 
-    bool IsValidScore(EvaluationProfile profile, decimal score);
+    bool IsValidScore(EvaluationProfile profile, string criterionId, decimal score);
 }

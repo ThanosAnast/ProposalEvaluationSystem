@@ -17,15 +17,15 @@ public sealed class ComparisonCalculator(IScoreCalculator scoreCalculator) : ICo
 
         var officialCriteria = referenceEvaluation.Criteria.Select(reference => new CriterionEvaluation
         {
-            Id = reference.CriterionId,
+            CriterionId = reference.CriterionId,
             Name = profile.Criteria.FirstOrDefault(definition => definition.Id == reference.CriterionId)?.DisplayName
                 ?? reference.CriterionId,
             Score = reference.OfficialScore
         }).ToArray();
         var officialCalculation = scoreCalculator.Calculate(profile, officialCriteria);
         var llmCalculation = scoreCalculator.Calculate(profile, independentEvaluation.Criteria);
-        var officialById = officialCriteria.ToDictionary(criterion => criterion.Id, StringComparer.Ordinal);
-        var llmById = independentEvaluation.Criteria.ToDictionary(criterion => criterion.Id, StringComparer.Ordinal);
+        var officialById = officialCriteria.ToDictionary(criterion => criterion.CriterionId, StringComparer.Ordinal);
+        var llmById = independentEvaluation.Criteria.ToDictionary(criterion => criterion.CriterionId, StringComparer.Ordinal);
         var qualitativeGroups = qualitativeDraft.Criteria
             .GroupBy(item => item.CriterionId, StringComparer.Ordinal)
             .ToArray();

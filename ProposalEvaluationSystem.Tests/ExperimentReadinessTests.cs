@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -11,7 +12,7 @@ namespace ProposalEvaluationSystem.Tests;
 
 public sealed class ExperimentReadinessTests
 {
-    private static readonly EvaluationProfile Profile = EvaluationProfiles.HorizonEssential;
+    private static readonly EvaluationProfile Profile = EvaluationProfiles.HorizonEuropeRiaIa;
 
     [Fact]
     public async Task EvaluationPayload_DisablesStorage_AndUsesFixedSnapshotAndReasoning()
@@ -83,6 +84,58 @@ public sealed class ExperimentReadinessTests
     }
 
     [Fact]
+    public async Task EvaluationSchema_UsesFinalShapeAndProfileSpecificScoreEnvelope()
+    {
+        var cases = new[]
+        {
+            (Profile: EvaluationProfiles.HorizonEuropeRiaIa, Maximum: 5m, Increment: (decimal?)0.5m, Count: 3),
+            (Profile: EvaluationProfiles.HorizonEuropeMscaStaffExchanges, Maximum: 5m, Increment: (decimal?)0.1m, Count: 3),
+            (Profile: EvaluationProfiles.ErasmusCbheStrand2, Maximum: 30m, Increment: (decimal?)null, Count: 4)
+        };
+
+        foreach (var item in cases)
+        {
+            var payloadText = await CaptureEvaluationPayloadAsync(item.Profile);
+            using var payload = JsonDocument.Parse(payloadText);
+            var schema = payload.RootElement
+                .GetProperty("text")
+                .GetProperty("format")
+                .GetProperty("schema");
+
+            Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
+            Assert.Equal(
+                ["scopeAssessment", "criteria", "overallComment", "evaluationLimitations"],
+                schema.GetProperty("required").EnumerateArray().Select(value => value.GetString()!).ToArray());
+            Assert.False(schema.GetProperty("properties").TryGetProperty("totalScore", out _));
+            Assert.False(schema.GetProperty("properties").TryGetProperty("thresholdMet", out _));
+
+            var criteria = schema.GetProperty("properties").GetProperty("criteria");
+            Assert.Equal(item.Count, criteria.GetProperty("minItems").GetInt32());
+            Assert.Equal(item.Count, criteria.GetProperty("maxItems").GetInt32());
+            var criterionSchema = criteria.GetProperty("items");
+            Assert.Equal(
+                ["criterionId", "score", "summary", "strengths", "shortcomings", "evidence", "limitations"],
+                criterionSchema.GetProperty("required").EnumerateArray().Select(value => value.GetString()!).ToArray());
+            var score = criterionSchema.GetProperty("properties").GetProperty("score");
+            Assert.Equal(0m, score.GetProperty("minimum").GetDecimal());
+            Assert.Equal(item.Maximum, score.GetProperty("maximum").GetDecimal());
+            Assert.Equal(item.Increment.HasValue, score.TryGetProperty("multipleOf", out var multipleOf));
+            if (item.Increment.HasValue)
+            {
+                Assert.Equal(item.Increment.Value, multipleOf.GetDecimal());
+            }
+
+            var criterionIds = criterionSchema.GetProperty("properties")
+                .GetProperty("criterionId")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(value => value.GetString()!)
+                .ToArray();
+            Assert.Equal(item.Profile.Criteria.Select(criterion => criterion.Id), criterionIds);
+        }
+    }
+
+    [Fact]
     public void CriterionComparison_ContainsCriterionLevelQualitativeFindings()
     {
         var result = new ComparisonCalculator(new ScoreCalculator()).Calculate(
@@ -129,7 +182,9 @@ public sealed class ExperimentReadinessTests
             MaxAttempts = 1
         });
 
-    private static EvaluationRequest CreateEvaluationRequest()
+    private static EvaluationRequest CreateEvaluationRequest() => CreateEvaluationRequest(Profile);
+
+    private static EvaluationRequest CreateEvaluationRequest(EvaluationProfile profile)
     {
         const string template = "Call: {{CALL_TEXT}}\nProposal: {{PROPOSAL_TEXT}}";
         var request = new EvaluationRequest
@@ -144,17 +199,31 @@ public sealed class ExperimentReadinessTests
                 DocumentType = DocumentType.Proposal,
                 ExtractedText = "Proposal evidence"
             },
-            Profile = Profile,
-            PromptTemplateName = Profile.PromptTemplateFileName!,
+            Profile = profile,
+            PromptTemplateName = profile.PromptTemplateFileName,
             PromptTemplateContent = template
         };
         request.GeneratedPrompt = new PromptBuilder().Build(request);
         request.InputFingerprint = ContentHashService.ComputeInputFingerprint(
             request.CallDocument,
             request.ProposalDocument,
-            Profile.Id,
+            profile.Id,
             template);
         return request;
+    }
+
+    private static async Task<string> CaptureEvaluationPayloadAsync(EvaluationProfile profile)
+    {
+        var handler = new CapturingHandler(CreateEvaluationApiResponse(profile));
+        using var client = new HttpClient(handler);
+        var service = new OpenAiEvaluationService(
+            client,
+            CreateOpenAiOptions("low"),
+            new EvaluationResultProcessor(new ScoreCalculator()),
+            NullLogger<OpenAiEvaluationService>.Instance);
+
+        await service.EvaluateAsync(CreateEvaluationRequest(profile));
+        return handler.RequestBody!;
     }
 
     private static EsrComparisonRequest CreateComparisonRequest() => new()
@@ -209,25 +278,32 @@ public sealed class ExperimentReadinessTests
         decimal impact,
         decimal implementation) =>
     [
-        new CriterionEvaluation { Id = EvaluationCriterionIds.Excellence, Name = "Excellence", Score = excellence },
-        new CriterionEvaluation { Id = EvaluationCriterionIds.Impact, Name = "Impact", Score = impact },
-        new CriterionEvaluation { Id = EvaluationCriterionIds.Implementation, Name = "Implementation", Score = implementation }
+        new CriterionEvaluation { CriterionId = EvaluationCriterionIds.Excellence, Name = "Excellence", Score = excellence },
+        new CriterionEvaluation { CriterionId = EvaluationCriterionIds.Impact, Name = "Impact", Score = impact },
+        new CriterionEvaluation { CriterionId = EvaluationCriterionIds.Implementation, Name = "Implementation", Score = implementation }
     ];
 
-    private static string CreateEvaluationApiResponse()
+    private static string CreateEvaluationApiResponse() =>
+        CreateEvaluationApiResponse(Profile, [4m, 3.5m, 3m]);
+
+    private static string CreateEvaluationApiResponse(
+        EvaluationProfile profile,
+        IReadOnlyList<decimal>? scores = null)
     {
+        scores ??= profile.Criteria.Select(criterion => criterion.ScoreMinimum).ToArray();
         var output = JsonSerializer.Serialize(new
         {
-            executiveSummary = "Summary",
-            criteria = new object[]
+            scopeAssessment = new
             {
-                Criterion(EvaluationCriterionIds.Excellence, 4m),
-                Criterion(EvaluationCriterionIds.Impact, 3.5m),
-                Criterion(EvaluationCriterionIds.Implementation, 3m)
+                status = "InScope",
+                rationale = "The proposal is in scope.",
+                evidence = new[] { "Scope evidence" }
             },
-            finalComment = "Final comment",
-            confidenceLevel = "High",
-            limitations = new[] { "Test limitation" }
+            criteria = profile.Criteria
+                .Select((criterion, index) => Criterion(criterion.Id, scores[index]))
+                .ToArray(),
+            overallComment = "Overall comment",
+            evaluationLimitations = new[] { "Test limitation" }
         });
         return CreateApiResponse("resp_evaluation_123", output, 120, 80, 200);
     }
@@ -276,12 +352,13 @@ public sealed class ExperimentReadinessTests
 
     private static object Criterion(string id, decimal score) => new
     {
-        id,
+        criterionId = id,
         score,
+        summary = "Summary",
         strengths = new[] { "Strength" },
-        weaknesses = new[] { "Weakness" },
+        shortcomings = new[] { "Shortcoming" },
         evidence = new[] { "Evidence" },
-        assessment = "Assessment"
+        limitations = Array.Empty<string>()
     };
 
     private static ExperimentRun CreateExperimentRun()

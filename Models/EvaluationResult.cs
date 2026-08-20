@@ -16,7 +16,7 @@ public sealed class EvaluationResult
 
     public string InputFingerprint { get; set; } = string.Empty;
 
-    public string ExecutiveSummary { get; set; } = string.Empty;
+    public ScopeAssessment ScopeAssessment { get; set; } = new();
 
     public List<CriterionEvaluation> Criteria { get; set; } = [];
 
@@ -24,11 +24,9 @@ public sealed class EvaluationResult
 
     public ThresholdAssessment ThresholdAssessment { get; set; } = new();
 
-    public string FinalComment { get; set; } = string.Empty;
+    public string OverallComment { get; set; } = string.Empty;
 
-    public string ConfidenceLevel { get; set; } = string.Empty;
-
-    public List<string> Limitations { get; set; } = [];
+    public List<string> EvaluationLimitations { get; set; } = [];
 
     [JsonIgnore]
     public OpenAiResponseMetadata? ApiMetadata { get; set; }

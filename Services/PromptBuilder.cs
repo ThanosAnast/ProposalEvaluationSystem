@@ -8,9 +8,14 @@ public sealed partial class PromptBuilder : IPromptBuilder
 {
     public string Build(EvaluationRequest request)
     {
+        var evaluationContext = WrapUntrustedDocument(
+            "CALL_DOCUMENT",
+            request.CallDocument.ExtractedText);
+
         var replacements = new Dictionary<string, string>
         {
-            ["{{CALL_TEXT}}"] = WrapUntrustedDocument("CALL_DOCUMENT", request.CallDocument.ExtractedText),
+            ["{{EVALUATION_CONTEXT}}"] = evaluationContext,
+            ["{{CALL_TEXT}}"] = evaluationContext,
             ["{{PROPOSAL_TEXT}}"] = WrapUntrustedDocument("PROPOSAL_DOCUMENT", request.ProposalDocument.ExtractedText),
             ["{{PROGRAMME_TYPE}}"] = request.Profile.ProgrammeType.ToString(),
             ["{{EVALUATION_PROFILE}}"] = request.Profile.DisplayName
@@ -24,6 +29,6 @@ public sealed partial class PromptBuilder : IPromptBuilder
     private static string WrapUntrustedDocument(string elementName, string content) =>
         $"<{elementName} untrusted=\"true\">\n{SecurityElement.Escape(content) ?? string.Empty}\n</{elementName}>";
 
-    [GeneratedRegex("\\{\\{(?:CALL_TEXT|PROPOSAL_TEXT|PROGRAMME_TYPE|EVALUATION_PROFILE)\\}\\}", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("\\{\\{(?:EVALUATION_CONTEXT|CALL_TEXT|PROPOSAL_TEXT|PROGRAMME_TYPE|EVALUATION_PROFILE)\\}\\}", RegexOptions.CultureInvariant)]
     private static partial Regex TemplatePlaceholderPattern();
 }

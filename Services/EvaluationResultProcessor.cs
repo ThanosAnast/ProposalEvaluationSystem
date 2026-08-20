@@ -6,17 +6,51 @@ public sealed class EvaluationResultProcessor(IScoreCalculator scoreCalculator) 
 {
     public EvaluationResult Process(EvaluationDraft draft, EvaluationRequest request, string modelName)
     {
-        var definitions = request.Profile.Criteria.ToDictionary(definition => definition.Id, StringComparer.Ordinal);
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(request);
 
-        foreach (var criterion in draft.Criteria)
+        var definitions = request.Profile.Criteria.ToDictionary(definition => definition.Id, StringComparer.Ordinal);
+        if (draft.Criteria.Any(criterion => string.IsNullOrWhiteSpace(criterion.CriterionId)))
         {
-            if (definitions.TryGetValue(criterion.Id, out var definition))
-            {
-                criterion.Name = definition.DisplayName;
-            }
+            throw new ScoreValidationException("Every evaluation criterion must have a criterion ID.");
         }
 
-        var calculation = scoreCalculator.Calculate(request.Profile, draft.Criteria);
+        var groupedCriteria = draft.Criteria
+            .GroupBy(criterion => criterion.CriterionId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+        if (groupedCriteria.Any(group => group.Value.Length != 1))
+        {
+            throw new ScoreValidationException("The evaluation contains a duplicate criterion ID.");
+        }
+
+        var unknownIds = groupedCriteria.Keys.Where(criterionId => !definitions.ContainsKey(criterionId)).ToArray();
+        if (unknownIds.Length > 0)
+        {
+            throw new ScoreValidationException(
+                $"The evaluation contains an unknown criterion ID: {string.Join(", ", unknownIds)}.");
+        }
+
+        var missingIds = definitions.Keys.Where(criterionId => !groupedCriteria.ContainsKey(criterionId)).ToArray();
+        if (missingIds.Length > 0)
+        {
+            throw new ScoreValidationException(
+                $"The evaluation is missing a required criterion: {string.Join(", ", missingIds)}.");
+        }
+
+        if (draft.Criteria.Count != request.Profile.Criteria.Count)
+        {
+            throw new ScoreValidationException("The evaluation must contain exactly one score for every profile criterion.");
+        }
+
+        var orderedCriteria = request.Profile.Criteria
+            .Select(definition =>
+            {
+                var criterion = groupedCriteria[definition.Id][0];
+                criterion.Name = definition.DisplayName;
+                return criterion;
+            })
+            .ToList();
+        var calculation = scoreCalculator.Calculate(request.Profile, orderedCriteria);
 
         return new EvaluationResult
         {
@@ -26,13 +60,12 @@ public sealed class EvaluationResultProcessor(IScoreCalculator scoreCalculator) 
             ModelName = modelName,
             PromptContentSha256 = ContentHashService.ComputeSha256(request.PromptTemplateContent),
             InputFingerprint = request.InputFingerprint,
-            ExecutiveSummary = draft.ExecutiveSummary,
-            Criteria = draft.Criteria,
+            ScopeAssessment = draft.ScopeAssessment,
+            Criteria = orderedCriteria,
             TotalScore = calculation.TotalScore,
             ThresholdAssessment = calculation.ThresholdAssessment,
-            FinalComment = draft.FinalComment,
-            ConfidenceLevel = draft.ConfidenceLevel,
-            Limitations = draft.Limitations,
+            OverallComment = draft.OverallComment,
+            EvaluationLimitations = draft.EvaluationLimitations,
             GeneratedPrompt = request.GeneratedPrompt
         };
     }

@@ -1,10 +1,15 @@
+@inject IEvaluationProfileService EvaluationProfileService
+
 @if (Result is not null)
 {
     <section class="result-stack" id="evaluation-result">
         <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
             <div>
                 <h2 class="h4 mb-1">Independent Evaluation</h2>
-                <div class="text-muted small">@Result.PromptTemplateUsed · @Result.ProgrammeType · @Result.ModelName</div>
+                <div class="fw-semibold">@(Profile?.DisplayName ?? Result.EvaluationProfileId)</div>
+                <div class="text-muted small">
+                    @Result.PromptTemplateUsed &middot; @Result.ProgrammeType &middot; @Result.ModelName
+                </div>
             </div>
             <span class="badge @(Result.ThresholdAssessment.Passed ? "text-bg-success" : "text-bg-warning") result-badge">
                 @Result.ThresholdAssessment.OverallResult
@@ -13,64 +18,93 @@
 
         <div class="card result-card">
             <div class="card-body">
-                <h3 class="h5">Executive Summary</h3>
-                <p>@Result.ExecutiveSummary</p>
+                <h3 class="h5">Scope Assessment</h3>
+                <div class="metric-label">Status</div>
+                <div class="fw-semibold mb-3">@Result.ScopeAssessment.Status</div>
 
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle score-table">
-                        <thead>
-                            <tr>
-                                <th>Criterion</th>
-                                <th class="text-end">Score</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var criterion in Result.Criteria)
+                <h4 class="h6">Rationale</h4>
+                <p>@Result.ScopeAssessment.Rationale</p>
+
+                <h4 class="h6">Evidence</h4>
+                @if (Result.ScopeAssessment.Evidence.Count == 0)
+                {
+                    <p class="text-muted mb-0">None identified.</p>
+                }
+                else
+                {
+                    <ul class="mb-0">
+                        @foreach (var item in Result.ScopeAssessment.Evidence)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+
+        <div class="card result-card">
+            <div class="card-body">
+                <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+                    <div>
+                        <h3 class="h5 mb-1">Deterministic Total Score</h3>
+                        <div class="fs-4 fw-semibold">
+                            @FormatScore(Result.TotalScore) / @FormatScore(Result.ThresholdAssessment.MaximumTotalScore)
+                            @if (Profile?.ScoringMode == ScoringMode.WeightedPercentage)
                             {
-                                <tr>
-                                    <td>@criterion.Name</td>
-                                    <td class="text-end">@criterion.Score.ToString("0.0")</td>
-                                </tr>
+                                <span class="fs-6 fw-normal text-muted"> weighted score</span>
                             }
-                            <tr class="fw-semibold">
-                                <td>Total score</td>
-                                <td class="text-end">@Result.TotalScore.ToString("0.0") / @Result.ThresholdAssessment.MaximumTotalScore.ToString("0.0")</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                        </div>
+                    </div>
+                    <span class="badge @(Result.ThresholdAssessment.Passed ? "text-bg-success" : "text-bg-warning") result-badge">
+                        @Result.ThresholdAssessment.OverallResult
+                    </span>
                 </div>
-
-                <p class="mb-0 text-muted">@Result.ThresholdAssessment.Explanation</p>
+                <p class="mb-0 mt-3 text-muted">@Result.ThresholdAssessment.Explanation</p>
             </div>
         </div>
 
         @foreach (var criterion in Result.Criteria)
         {
-            <CriterionEvaluationView Criterion="criterion" />
+            <CriterionEvaluationView Criterion="criterion" Definition="GetDefinition(criterion)" />
         }
 
         <div class="card result-card">
             <div class="card-body">
-                <h3 class="h5">Final Comment</h3>
-                <p>@Result.FinalComment</p>
+                <h3 class="h5">Overall Comment</h3>
+                <p>@Result.OverallComment</p>
 
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <div class="metric-label">Confidence level</div>
-                        <div class="fw-semibold">@Result.ConfidenceLevel</div>
-                    </div>
-                    <div class="col-md-8">
-                        <div class="metric-label">Limitations</div>
-                        <ul class="mb-0">
-                            @foreach (var limitation in Result.Limitations)
-                            {
-                                <li>@limitation</li>
-                            }
-                        </ul>
-                    </div>
-                </div>
+                <h3 class="h6">Evaluation Limitations</h3>
+                @if (Result.EvaluationLimitations.Count == 0)
+                {
+                    <p class="text-muted mb-0">None identified.</p>
+                }
+                else
+                {
+                    <ul class="mb-0">
+                        @foreach (var limitation in Result.EvaluationLimitations)
+                        {
+                            <li>@limitation</li>
+                        }
+                    </ul>
+                }
             </div>
         </div>
+
+        <details class="details-panel">
+            <summary>Reproducibility metadata</summary>
+            <dl class="row mt-3 mb-0">
+                <dt class="col-md-4">Evaluation profile ID</dt>
+                <dd class="col-md-8"><code>@Result.EvaluationProfileId</code></dd>
+                <dt class="col-md-4">Prompt template</dt>
+                <dd class="col-md-8"><code>@Result.PromptTemplateUsed</code></dd>
+                <dt class="col-md-4">Model</dt>
+                <dd class="col-md-8"><code>@Result.ModelName</code></dd>
+                <dt class="col-md-4">Prompt SHA-256</dt>
+                <dd class="col-md-8 text-break"><code>@Result.PromptContentSha256</code></dd>
+                <dt class="col-md-4">Input fingerprint</dt>
+                <dd class="col-md-8 text-break"><code>@Result.InputFingerprint</code></dd>
+            </dl>
+        </details>
 
         <details class="details-panel">
             <summary>Generated independent-evaluation prompt</summary>
@@ -82,4 +116,16 @@
 @code {
     [Parameter, EditorRequired]
     public EvaluationResult? Result { get; set; }
+
+    private EvaluationProfile? Profile => Result is null
+        ? null
+        : EvaluationProfileService.GetAllProfiles().FirstOrDefault(profile =>
+            string.Equals(profile.Id, Result.EvaluationProfileId, StringComparison.Ordinal));
+
+    private CriterionDefinition? GetDefinition(CriterionEvaluation criterion) =>
+        Profile?.Criteria.FirstOrDefault(definition =>
+            string.Equals(definition.Id, criterion.CriterionId, StringComparison.Ordinal));
+
+    private static string FormatScore(decimal score) =>
+        score.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 }

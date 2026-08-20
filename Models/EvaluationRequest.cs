@@ -7,7 +7,7 @@ public sealed class EvaluationRequest
     public ProcessedDocument ProposalDocument { get; set; } = new() { DocumentType = DocumentType.Proposal };
 
 
-    public EvaluationProfile Profile { get; set; } = EvaluationProfiles.HorizonEssential;
+    public EvaluationProfile Profile { get; set; } = EvaluationProfiles.HorizonEuropeRiaIa;
 
     public string PromptTemplateName { get; set; } = string.Empty;
 

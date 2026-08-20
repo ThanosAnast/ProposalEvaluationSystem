@@ -6,10 +6,17 @@ public sealed class ScoreCalculator : IScoreCalculator
 {
     public ScoreCalculation Calculate(EvaluationProfile profile, IReadOnlyCollection<CriterionEvaluation> criteria)
     {
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(criteria);
         EnsureConfigured(profile);
 
+        if (criteria.Any(criterion => string.IsNullOrWhiteSpace(criterion.CriterionId)))
+        {
+            throw new ScoreValidationException("Every evaluation criterion must have a criterion ID.");
+        }
+
         var byId = criteria
-            .GroupBy(criterion => criterion.Id, StringComparer.Ordinal)
+            .GroupBy(criterion => criterion.CriterionId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
 
         var expectedIds = profile.Criteria.Select(definition => definition.Id).ToHashSet(StringComparer.Ordinal);
@@ -20,15 +27,30 @@ public sealed class ScoreCalculator : IScoreCalculator
             throw new ScoreValidationException("The evaluation must contain exactly one score for every profile criterion.");
         }
 
-        foreach (var criterion in criteria)
+        foreach (var definition in profile.Criteria)
         {
-            ValidateScore(profile, criterion.Score, criterion.Name);
+            ValidateScore(profile, definition, byId[definition.Id][0].Score);
         }
 
-        var total = criteria.Sum(criterion => criterion.Score);
-        var individualThresholdsMet = profile.Criteria.All(
-            definition => byId[definition.Id][0].Score >= definition.Threshold);
-        var overallThresholdMet = total >= profile.OverallThreshold!.Value;
+        var total = profile.ScoringMode switch
+        {
+            ScoringMode.Additive => profile.Criteria.Sum(
+                definition => byId[definition.Id][0].Score),
+            ScoringMode.WeightedPercentage => profile.Criteria.Sum(
+                definition =>
+                    byId[definition.Id][0].Score /
+                    definition.ScoreMaximum *
+                    definition.WeightPercentage!.Value),
+            _ => throw new ScoreValidationException(
+                $"Evaluation profile '{profile.Id}' uses an unsupported scoring mode.")
+        };
+
+        var applicableThresholds = profile.Criteria
+            .Where(definition => definition.Threshold.HasValue)
+            .ToArray();
+        var individualThresholdsMet = applicableThresholds.All(
+            definition => byId[definition.Id][0].Score >= definition.Threshold!.Value);
+        var overallThresholdMet = total >= profile.OverallThreshold;
         var passed = individualThresholdsMet && overallThresholdMet;
 
         return new ScoreCalculation
@@ -37,37 +59,59 @@ public sealed class ScoreCalculator : IScoreCalculator
             ThresholdAssessment = new ThresholdAssessment
             {
                 TotalScore = total,
-                RequiredTotalScore = profile.OverallThreshold.Value,
+                RequiredTotalScore = profile.OverallThreshold,
                 MaximumTotalScore = profile.MaximumTotal,
                 IndividualThresholdsMet = individualThresholdsMet,
                 OverallThresholdMet = overallThresholdMet,
                 Passed = passed,
                 OverallResult = passed ? "Threshold met" : "Below threshold",
-                Explanation = CreateExplanation(profile, total, individualThresholdsMet, overallThresholdMet)
+                Explanation = CreateExplanation(
+                    profile,
+                    total,
+                    applicableThresholds.Length,
+                    individualThresholdsMet,
+                    overallThresholdMet)
             }
         };
     }
 
-    public bool IsValidScore(EvaluationProfile profile, decimal score)
+    public bool IsValidScore(EvaluationProfile profile, string criterionId, decimal score)
     {
-        if (!profile.IsConfigured)
+        if (profile is null ||
+            !profile.Enabled ||
+            !profile.IsConfigured ||
+            string.IsNullOrWhiteSpace(criterionId))
         {
             return false;
         }
 
-        var minimum = profile.ScoreMinimum!.Value;
-        var maximum = profile.ScoreMaximum!.Value;
-        var increment = profile.ScoreIncrement!.Value;
-        return score >= minimum && score <= maximum && decimal.Remainder(score - minimum, increment) == 0m;
+        var definition = profile.Criteria.FirstOrDefault(
+            candidate => string.Equals(candidate.Id, criterionId, StringComparison.Ordinal));
+        if (definition is null || score < definition.ScoreMinimum || score > definition.ScoreMaximum)
+        {
+            return false;
+        }
+
+        return !definition.ScoreIncrement.HasValue ||
+               decimal.Remainder(score - definition.ScoreMinimum, definition.ScoreIncrement.Value) == 0m;
     }
 
-    private void ValidateScore(EvaluationProfile profile, decimal score, string criterionName)
+    private void ValidateScore(
+        EvaluationProfile profile,
+        CriterionDefinition definition,
+        decimal score)
     {
-        if (!IsValidScore(profile, score))
+        if (IsValidScore(profile, definition.Id, score))
         {
-            throw new ScoreValidationException(
-                $"Score {score} for '{criterionName}' is invalid. Scores must be between {profile.ScoreMinimum:0.0} and {profile.ScoreMaximum:0.0} in increments of {profile.ScoreIncrement:0.0}.");
+            return;
         }
+
+        var incrementText = definition.ScoreIncrement.HasValue
+            ? $" in increments of {definition.ScoreIncrement:0.##}"
+            : string.Empty;
+        throw new ScoreValidationException(
+            $"Score {score} for '{definition.DisplayName}' is invalid. Scores must be between " +
+            $"{definition.ScoreMinimum:0.##} and {definition.ScoreMaximum:0.##}{incrementText}.");
     }
 
     private static void EnsureConfigured(EvaluationProfile profile)
@@ -76,25 +120,28 @@ public sealed class ScoreCalculator : IScoreCalculator
         {
             throw new ScoreValidationException($"Evaluation profile '{profile.Id}' is not enabled or fully configured.");
         }
-
-        if (profile.ScoreIncrement <= 0m || profile.ScoreMaximum < profile.ScoreMinimum)
-        {
-            throw new ScoreValidationException($"Evaluation profile '{profile.Id}' has an invalid score range.");
-        }
     }
 
     private static string CreateExplanation(
         EvaluationProfile profile,
         decimal total,
+        int applicableThresholdCount,
         bool individualThresholdsMet,
         bool overallThresholdMet)
     {
-        var individualText = individualThresholdsMet
-            ? "All individual criterion thresholds are met."
-            : "At least one individual criterion threshold is not met.";
+        var individualText = applicableThresholdCount == 0
+            ? "No individual criterion thresholds apply."
+            : individualThresholdsMet
+                ? "All applicable individual criterion thresholds are met."
+                : "At least one applicable individual criterion threshold is not met.";
+        var totalDescription = profile.ScoringMode == ScoringMode.WeightedPercentage
+            ? "weighted total score"
+            : "total score";
         var overallText = overallThresholdMet
-            ? $"The total score of {total:0.0} meets the required {profile.OverallThreshold:0.0}."
-            : $"The total score of {total:0.0} is below the required {profile.OverallThreshold:0.0}.";
+            ? $"The {totalDescription} of {total:0.0} meets the required " +
+              $"{profile.OverallThreshold:0.0} out of {profile.MaximumTotal:0.0}."
+            : $"The {totalDescription} of {total:0.0} is below the required " +
+              $"{profile.OverallThreshold:0.0} out of {profile.MaximumTotal:0.0}.";
 
         return $"{individualText} {overallText}";
     }

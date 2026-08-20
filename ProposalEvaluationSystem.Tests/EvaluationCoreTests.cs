@@ -7,7 +7,7 @@ namespace ProposalEvaluationSystem.Tests;
 
 public sealed class EvaluationCoreTests
 {
-    private static readonly EvaluationProfile Profile = EvaluationProfiles.HorizonEssential;
+    private static readonly EvaluationProfile Profile = EvaluationProfiles.HorizonEuropeRiaIa;
 
     [Fact]
     public void PromptBuilder_NeverReceivesOrOutputsEsrText()
@@ -25,6 +25,21 @@ public sealed class EvaluationCoreTests
             typeof(EvaluationRequest).GetProperties(),
             property => property.Name.Contains("Esr", StringComparison.OrdinalIgnoreCase) ||
                         property.Name.Contains("RealEvaluation", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void PromptBuilder_ReplacesEvaluationContextAndLegacyCallPlaceholders()
+    {
+        var request = CreateRequest("Evaluation context evidence", "Proposal evidence");
+        request.PromptTemplateContent =
+            "Context: {{EVALUATION_CONTEXT}}\nLegacy: {{CALL_TEXT}}\nProposal: {{PROPOSAL_TEXT}}";
+
+        var prompt = new PromptBuilder().Build(request);
+
+        Assert.Equal(2, CountOccurrences(prompt, "Evaluation context evidence"));
+        Assert.Contains("Proposal evidence", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("{{EVALUATION_CONTEXT}}", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("{{CALL_TEXT}}", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -54,7 +69,7 @@ public sealed class EvaluationCoreTests
             "..",
             "..",
             "PromptTemplates",
-            "horizon_essential_v3.md"));
+            "horizon_europe_ria_ia_2021_2025.md"));
 
         var content = File.ReadAllText(path);
 
@@ -85,7 +100,7 @@ public sealed class EvaluationCoreTests
     {
         var calculator = new ScoreCalculator();
 
-        Assert.True(calculator.IsValidScore(Profile, score));
+        Assert.True(calculator.IsValidScore(Profile, EvaluationCriterionIds.Excellence, score));
     }
 
     [Theory]
@@ -97,7 +112,7 @@ public sealed class EvaluationCoreTests
         var calculator = new ScoreCalculator();
         var criteria = CreateCriteria(invalidScore, 3m, 4m);
 
-        Assert.False(calculator.IsValidScore(Profile, invalidScore));
+        Assert.False(calculator.IsValidScore(Profile, EvaluationCriterionIds.Excellence, invalidScore));
         Assert.Throws<ScoreValidationException>(() => calculator.Calculate(Profile, criteria));
     }
 
@@ -149,13 +164,15 @@ public sealed class EvaluationCoreTests
     }
 
     [Fact]
-    public void DisabledProfile_CannotBeSelected()
+    public void AllConfiguredProfiles_AreEnabledAndSelectable()
     {
         var service = new EvaluationProfileService();
 
-        Assert.DoesNotContain(service.GetEnabledProfiles(), profile => profile.ProgrammeType == ProgrammeType.Erasmus);
-        Assert.Throws<InvalidOperationException>(
-            () => service.GetRequiredEnabledProfile(EvaluationProfiles.ErasmusUnconfiguredId));
+        Assert.Equal(5, service.GetEnabledProfiles().Count);
+        Assert.Contains(service.GetEnabledProfiles(), profile => profile.ProgrammeType == ProgrammeType.Erasmus);
+        Assert.Equal(
+            EvaluationProfiles.ErasmusCbheStrand2Id,
+            service.GetRequiredEnabledProfile(EvaluationProfiles.ErasmusCbheStrand2Id).Id);
     }
 
     [Fact]
@@ -297,11 +314,15 @@ public sealed class EvaluationCoreTests
 
     private static EvaluationDraft CreateDraft(decimal excellence, decimal impact, decimal implementation) => new()
     {
-        ExecutiveSummary = "Summary",
+        ScopeAssessment = new ScopeAssessment
+        {
+            Status = "InScope",
+            Rationale = "The proposal addresses the evaluation context.",
+            Evidence = ["Scope evidence"]
+        },
         Criteria = CreateCriteria(excellence, impact, implementation).ToList(),
-        FinalComment = "Comment",
-        ConfidenceLevel = "Medium",
-        Limitations = ["Test limitation"]
+        OverallComment = "Comment",
+        EvaluationLimitations = ["Test limitation"]
     };
 
     private static IReadOnlyCollection<CriterionEvaluation> CreateCriteria(
@@ -309,9 +330,9 @@ public sealed class EvaluationCoreTests
         decimal impact,
         decimal implementation) =>
     [
-        new CriterionEvaluation { Id = EvaluationCriterionIds.Excellence, Name = "Excellence", Score = excellence },
-        new CriterionEvaluation { Id = EvaluationCriterionIds.Impact, Name = "Impact", Score = impact },
-        new CriterionEvaluation { Id = EvaluationCriterionIds.Implementation, Name = "Implementation", Score = implementation }
+        new CriterionEvaluation { CriterionId = EvaluationCriterionIds.Excellence, Name = "Excellence", Score = excellence },
+        new CriterionEvaluation { CriterionId = EvaluationCriterionIds.Impact, Name = "Impact", Score = impact },
+        new CriterionEvaluation { CriterionId = EvaluationCriterionIds.Implementation, Name = "Implementation", Score = implementation }
     ];
 
     private static EvaluationWorkflowState CreatePopulatedWorkflowState() => new()
@@ -358,4 +379,7 @@ public sealed class EvaluationCoreTests
         Directory.CreateDirectory(path);
         return path;
     }
+
+    private static int CountOccurrences(string value, string search) =>
+        value.Split(search, StringSplitOptions.None).Length - 1;
 }
