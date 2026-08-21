@@ -53,6 +53,9 @@ public sealed class MultiProfileEvaluationTests
 
         Assert.Equal(10m, passing.TotalScore);
         Assert.Equal(15m, passing.ThresholdAssessment.MaximumTotalScore);
+        Assert.Equal([3m, 4m, 3m], passing.Criteria.Select(item => item.RawScore).ToArray());
+        Assert.Equal([3m, 4m, 3m], passing.Criteria.Select(item => item.ContributionToTotal).ToArray());
+        Assert.All(passing.Criteria, item => Assert.True(item.ThresholdMet is true));
         Assert.True(passing.ThresholdAssessment.Passed);
 
         Assert.Equal(10.5m, individualFailure.TotalScore);
@@ -75,6 +78,9 @@ public sealed class MultiProfileEvaluationTests
 
         Assert.Equal(71.4m, result2024.TotalScore);
         Assert.Equal(100m, result2024.ThresholdAssessment.MaximumTotalScore);
+        Assert.Equal([34m, 22.2m, 15.2m], result2024.Criteria.Select(item => item.ContributionToTotal).ToArray());
+        Assert.Equal([50m, 30m, 20m], result2024.Criteria.Select(item => item.WeightPercentage).ToArray());
+        Assert.All(result2024.Criteria, item => Assert.Null(item.ThresholdMet));
         Assert.True(result2024.ThresholdAssessment.IndividualThresholdsMet);
         Assert.True(result2024.ThresholdAssessment.Passed);
         Assert.Contains("weighted total score", result2024.ThresholdAssessment.Explanation, StringComparison.OrdinalIgnoreCase);
@@ -230,6 +236,8 @@ public sealed class MultiProfileEvaluationTests
         Assert.Equal(71.4m, result.LlmTotalScore);
         Assert.Equal(69.2m, result.OfficialTotalScore);
         Assert.Equal(2.2m, result.TotalScoreDifference);
+        Assert.Equal([30m, 24m, 15.2m], result.OfficialScoreBreakdown.Select(item => item.ContributionToTotal).ToArray());
+        Assert.Equal([34m, 22.2m, 15.2m], result.LlmScoreBreakdown.Select(item => item.ContributionToTotal).ToArray());
         Assert.False(result.ThresholdAgreement);
     }
 

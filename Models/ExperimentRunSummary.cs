@@ -17,4 +17,10 @@ public sealed class ExperimentRunSummary
     public string ThresholdResult { get; set; } = string.Empty;
 
     public bool HasEsrComparison { get; set; }
+
+    public decimal? OfficialTotalScore { get; set; }
+
+    public decimal? TotalScoreDifference { get; set; }
+
+    public bool? ThresholdAgreement { get; set; }
 }

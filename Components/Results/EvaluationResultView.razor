@@ -63,6 +63,51 @@
             </div>
         </div>
 
+        @if (Result.ScoreBreakdown.Count > 0)
+        {
+            <details class="details-panel" open>
+                <summary>C# score calculation</summary>
+                <p class="text-muted mt-3">
+                    The LLM supplies only the raw score for each criterion. The application validates each score,
+                    calculates its contribution, sums the contributions, and applies the configured thresholds.
+                </p>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Criterion</th>
+                                <th class="text-end">Raw score</th>
+                                <th>Formula</th>
+                                <th class="text-end">Contribution</th>
+                                <th>Criterion threshold</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in Result.ScoreBreakdown)
+                            {
+                                <tr>
+                                    <td>@item.CriterionName</td>
+                                    <td class="text-end">@FormatScore(item.RawScore) / @FormatScore(item.ScoreMaximum)</td>
+                                    <td><code>@FormatFormula(item)</code></td>
+                                    <td class="text-end fw-semibold">@FormatScore(item.ContributionToTotal)</td>
+                                    <td>
+                                        @if (item.Threshold is decimal threshold)
+                                        {
+                                            <span>@FormatScore(threshold) — @(item.ThresholdMet == true ? "met" : "not met")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Not applicable</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        }
+
         @foreach (var criterion in Result.Criteria)
         {
             <CriterionEvaluationView Criterion="criterion" Definition="GetDefinition(criterion)" />
@@ -106,10 +151,13 @@
             </dl>
         </details>
 
-        <details class="details-panel">
-            <summary>Generated independent-evaluation prompt</summary>
-            <pre class="prompt-output mt-3">@Result.GeneratedPrompt</pre>
-        </details>
+        @if (!string.IsNullOrWhiteSpace(Result.GeneratedPrompt))
+        {
+            <details class="details-panel">
+                <summary>Generated independent-evaluation prompt</summary>
+                <pre class="prompt-output mt-3">@Result.GeneratedPrompt</pre>
+            </details>
+        }
     </section>
 }
 
@@ -117,10 +165,13 @@
     [Parameter, EditorRequired]
     public EvaluationResult? Result { get; set; }
 
-    private EvaluationProfile? Profile => Result is null
+    [Parameter]
+    public EvaluationProfile? ProfileOverride { get; set; }
+
+    private EvaluationProfile? Profile => ProfileOverride ?? (Result is null
         ? null
         : EvaluationProfileService.GetAllProfiles().FirstOrDefault(profile =>
-            string.Equals(profile.Id, Result.EvaluationProfileId, StringComparison.Ordinal));
+            string.Equals(profile.Id, Result.EvaluationProfileId, StringComparison.Ordinal)));
 
     private CriterionDefinition? GetDefinition(CriterionEvaluation criterion) =>
         Profile?.Criteria.FirstOrDefault(definition =>
@@ -128,4 +179,9 @@
 
     private static string FormatScore(decimal score) =>
         score.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string FormatFormula(CriterionScoreCalculation item) =>
+        item.WeightPercentage is decimal weight
+            ? $"{FormatScore(item.RawScore)} / {FormatScore(item.ScoreMaximum)} × {FormatScore(weight)}"
+            : FormatScore(item.RawScore);
 }

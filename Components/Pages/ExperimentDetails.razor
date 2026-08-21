@@ -1,0 +1,310 @@
+@page "/experiment-history/{DatasetId}/{RunId}"
+@rendermode InteractiveServer
+
+@inject IExperimentRepository ExperimentRepository
+
+<PageTitle>Experiment Details</PageTitle>
+
+<div class="workspace">
+    <div class="page-heading">
+        <div>
+            <h1>Experiment Details</h1>
+            @if (run is not null)
+            {
+                <p class="text-muted mb-0">
+                    Dataset <code>@run.Metadata.DatasetId</code> · Run <code>@run.Metadata.RunId</code>
+                </p>
+            }
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            @if (run is not null)
+            {
+                <a class="btn btn-success" href="@JsonDownloadUrl">Download JSON</a>
+            }
+            <a class="btn btn-outline-primary" href="/experiment-history">Back to History</a>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <p>Loading experiment run…</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+    else if (run is not null)
+    {
+        <div class="alert alert-info">
+            Source document text and the generated prompt are intentionally excluded from downloadable experiment JSON.
+            Filenames, hashes, character counts, the prompt template, scoring rules, outputs, and API metadata are retained.
+        </div>
+
+        <section class="card section-card">
+            <div class="card-body">
+                <h2 class="h5">Run metadata</h2>
+                <dl class="row mb-0">
+                    <dt class="col-md-4">Created (UTC)</dt>
+                    <dd class="col-md-8">@run.Metadata.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</dd>
+                    <dt class="col-md-4">Schema version</dt>
+                    <dd class="col-md-8"><code>@run.Metadata.ExperimentSchemaVersion</code></dd>
+                    <dt class="col-md-4">Evaluation profile</dt>
+                    <dd class="col-md-8"><code>@run.Metadata.EvaluationProfileId</code></dd>
+                    <dt class="col-md-4">Actual response model</dt>
+                    <dd class="col-md-8"><code>@run.Metadata.ModelName</code></dd>
+                    <dt class="col-md-4">Application version</dt>
+                    <dd class="col-md-8"><code>@run.Metadata.ApplicationVersion</code></dd>
+                    <dt class="col-md-4">Git commit</dt>
+                    <dd class="col-md-8 text-break"><code>@run.Metadata.GitCommitSha</code></dd>
+                    <dt class="col-md-4">Input fingerprint</dt>
+                    <dd class="col-md-8 text-break"><code>@run.Metadata.InputFingerprint</code></dd>
+                </dl>
+            </div>
+        </section>
+
+        <section class="card section-card">
+            <div class="card-body">
+                <h2 class="h5">Document fingerprints</h2>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Document</th>
+                                <th>Filename</th>
+                                <th class="text-end">Characters</th>
+                                <th>SHA-256</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var document in Documents)
+                            {
+                                <tr>
+                                    <td>@document.Label</td>
+                                    <td>@document.Metadata.FileName</td>
+                                    <td class="text-end">@document.Metadata.ExtractedCharacterCount</td>
+                                    <td class="text-break"><code>@document.Metadata.ContentSha256</code></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        @if (run.Metadata.ProfileSnapshot is not null)
+        {
+            var profile = run.Metadata.ProfileSnapshot;
+            <section class="card section-card">
+                <div class="card-body">
+                    <h2 class="h5">Frozen scoring profile</h2>
+                    <p class="text-muted">
+                        @profile.DisplayName · @profile.ScoringMode · overall threshold
+                        @FormatScore(profile.OverallThreshold) / @FormatScore(profile.MaximumTotal)
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Criterion</th>
+                                    <th class="text-end">Range</th>
+                                    <th class="text-end">Increment</th>
+                                    <th class="text-end">Threshold</th>
+                                    <th class="text-end">Weight</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var criterion in profile.Criteria)
+                                {
+                                    <tr>
+                                        <td>@criterion.DisplayName <code class="ms-1">@criterion.Id</code></td>
+                                        <td class="text-end">@FormatScore(criterion.ScoreMinimum)–@FormatScore(criterion.ScoreMaximum)</td>
+                                        <td class="text-end">@(criterion.ScoreIncrement is decimal increment ? FormatScore(increment) : "Any")</td>
+                                        <td class="text-end">@(criterion.Threshold is decimal threshold ? FormatScore(threshold) : "—")</td>
+                                        <td class="text-end">@(criterion.WeightPercentage is decimal weight ? $"{FormatScore(weight)}%" : "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        }
+
+        @if (run.Metadata.OpenAiRequestSnapshot is not null)
+        {
+            var request = run.Metadata.OpenAiRequestSnapshot;
+            <section class="card section-card">
+                <div class="card-body">
+                    <h2 class="h5">OpenAI request snapshot</h2>
+                    <dl class="row mb-0">
+                        <dt class="col-md-4">Configured model</dt>
+                        <dd class="col-md-8"><code>@request.ConfiguredModel</code></dd>
+                        <dt class="col-md-4">Reasoning effort</dt>
+                        <dd class="col-md-8"><code>@request.ReasoningEffort</code></dd>
+                        <dt class="col-md-4">Maximum output tokens</dt>
+                        <dd class="col-md-8">@request.MaxOutputTokens</dd>
+                        <dt class="col-md-4">HTTP timeout</dt>
+                        <dd class="col-md-8">@request.TimeoutSeconds seconds</dd>
+                        <dt class="col-md-4">Maximum attempts</dt>
+                        <dd class="col-md-8">@request.MaxAttempts</dd>
+                        <dt class="col-md-4">Initial retry delay</dt>
+                        <dd class="col-md-8">@request.InitialRetryDelayMilliseconds ms</dd>
+                        <dt class="col-md-4">API response storage</dt>
+                        <dd class="col-md-8">@(request.StoreResponse ? "Enabled" : "Disabled")</dd>
+                        <dt class="col-md-4">Endpoint</dt>
+                        <dd class="col-md-8 text-break"><code>@request.Endpoint</code></dd>
+                    </dl>
+                </div>
+            </section>
+        }
+
+        @if (run.Metadata.PromptTemplateSnapshot is not null)
+        {
+            var prompt = run.Metadata.PromptTemplateSnapshot;
+            <details class="details-panel">
+                <summary>Frozen prompt template · @prompt.FileName</summary>
+                <dl class="row mt-3">
+                    <dt class="col-md-4">Template SHA-256</dt>
+                    <dd class="col-md-8 text-break"><code>@prompt.ContentSha256</code></dd>
+                </dl>
+                <pre class="prompt-output">@prompt.Content</pre>
+            </details>
+        }
+
+        <EvaluationResultView Result="run.IndependentEvaluation" ProfileOverride="SnapshotProfile" />
+
+        @if (run.ComparisonResult is not null)
+        {
+            <EvaluationComparisonView Result="run.ComparisonResult" />
+        }
+
+        @if (run.Warnings.Count > 0 || run.Errors.Count > 0)
+        {
+            <section class="card section-card">
+                <div class="card-body">
+                    <h2 class="h5">Run diagnostics</h2>
+                    @if (run.Warnings.Count > 0)
+                    {
+                        <h3 class="h6">Warnings</h3>
+                        <ul>
+                            @foreach (var warning in run.Warnings)
+                            {
+                                <li>@warning</li>
+                            }
+                        </ul>
+                    }
+                    @if (run.Errors.Count > 0)
+                    {
+                        <h3 class="h6">Errors</h3>
+                        <ul class="mb-0">
+                            @foreach (var error in run.Errors)
+                            {
+                                <li>@error</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </section>
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string DatasetId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string RunId { get; set; } = string.Empty;
+
+    private ExperimentRun? run;
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    private string JsonDownloadUrl =>
+        $"/api/experiments/{Uri.EscapeDataString(DatasetId)}/{Uri.EscapeDataString(RunId)}/download";
+
+    private IReadOnlyList<(string Label, ExperimentDocumentMetadata Metadata)> Documents
+    {
+        get
+        {
+            if (run is null)
+            {
+                return [];
+            }
+
+            var documents = new List<(string, ExperimentDocumentMetadata)>
+            {
+                ("Evaluation Context", run.Metadata.Call),
+                ("Proposal", run.Metadata.Proposal)
+            };
+            if (run.Metadata.Esr is not null)
+            {
+                documents.Add(("ESR", run.Metadata.Esr));
+            }
+
+            return documents;
+        }
+    }
+
+    private EvaluationProfile? SnapshotProfile => CreateProfile(run?.Metadata.ProfileSnapshot);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        run = null;
+
+        try
+        {
+            run = await ExperimentRepository.GetAsync(DatasetId, RunId);
+            if (run is null)
+            {
+                errorMessage = "The requested experiment run was not found.";
+            }
+        }
+        catch (ArgumentException)
+        {
+            errorMessage = "The experiment dataset ID or run ID is invalid.";
+        }
+        catch (Exception exception)
+        {
+            errorMessage = $"The experiment run could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static EvaluationProfile? CreateProfile(EvaluationProfileSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return null;
+        }
+
+        return new EvaluationProfile
+        {
+            Id = snapshot.Id,
+            ProgrammeType = snapshot.ProgrammeType,
+            DisplayName = snapshot.DisplayName,
+            Enabled = true,
+            PromptTemplateFileName = snapshot.PromptTemplateFileName,
+            ScoringMode = snapshot.ScoringMode,
+            OverallThreshold = snapshot.OverallThreshold,
+            Criteria = snapshot.Criteria.Select(criterion => new CriterionDefinition
+            {
+                Id = criterion.Id,
+                DisplayName = criterion.DisplayName,
+                ScoreMinimum = criterion.ScoreMinimum,
+                ScoreMaximum = criterion.ScoreMaximum,
+                ScoreIncrement = criterion.ScoreIncrement,
+                Threshold = criterion.Threshold,
+                WeightPercentage = criterion.WeightPercentage
+            }).ToArray()
+        };
+    }
+
+    private static string FormatScore(decimal score) =>
+        score.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}

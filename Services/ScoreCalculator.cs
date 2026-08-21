@@ -32,18 +32,13 @@ public sealed class ScoreCalculator : IScoreCalculator
             ValidateScore(profile, definition, byId[definition.Id][0].Score);
         }
 
-        var total = profile.ScoringMode switch
-        {
-            ScoringMode.Additive => profile.Criteria.Sum(
-                definition => byId[definition.Id][0].Score),
-            ScoringMode.WeightedPercentage => profile.Criteria.Sum(
-                definition =>
-                    byId[definition.Id][0].Score /
-                    definition.ScoreMaximum *
-                    definition.WeightPercentage!.Value),
-            _ => throw new ScoreValidationException(
-                $"Evaluation profile '{profile.Id}' uses an unsupported scoring mode.")
-        };
+        var criterionCalculations = profile.Criteria
+            .Select(definition => CreateCriterionCalculation(
+                profile.ScoringMode,
+                definition,
+                byId[definition.Id][0].Score))
+            .ToArray();
+        var total = criterionCalculations.Sum(item => item.ContributionToTotal);
 
         var applicableThresholds = profile.Criteria
             .Where(definition => definition.Threshold.HasValue)
@@ -56,6 +51,7 @@ public sealed class ScoreCalculator : IScoreCalculator
         return new ScoreCalculation
         {
             TotalScore = total,
+            Criteria = criterionCalculations,
             ThresholdAssessment = new ThresholdAssessment
             {
                 TotalScore = total,
@@ -72,6 +68,36 @@ public sealed class ScoreCalculator : IScoreCalculator
                     individualThresholdsMet,
                     overallThresholdMet)
             }
+        };
+    }
+
+    private static CriterionScoreCalculation CreateCriterionCalculation(
+        ScoringMode scoringMode,
+        CriterionDefinition definition,
+        decimal rawScore)
+    {
+        var contribution = scoringMode switch
+        {
+            ScoringMode.Additive => rawScore,
+            ScoringMode.WeightedPercentage =>
+                rawScore / definition.ScoreMaximum * definition.WeightPercentage!.Value,
+            _ => throw new ScoreValidationException("The evaluation profile uses an unsupported scoring mode.")
+        };
+
+        return new CriterionScoreCalculation
+        {
+            CriterionId = definition.Id,
+            CriterionName = definition.DisplayName,
+            RawScore = rawScore,
+            ScoreMinimum = definition.ScoreMinimum,
+            ScoreMaximum = definition.ScoreMaximum,
+            ScoreIncrement = definition.ScoreIncrement,
+            WeightPercentage = definition.WeightPercentage,
+            ContributionToTotal = contribution,
+            Threshold = definition.Threshold,
+            ThresholdMet = definition.Threshold.HasValue
+                ? rawScore >= definition.Threshold.Value
+                : null
         };
     }
 

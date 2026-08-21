@@ -22,6 +22,8 @@ public sealed class EvaluationResult
 
     public decimal TotalScore { get; set; }
 
+    public List<CriterionScoreCalculation> ScoreBreakdown { get; set; } = [];
+
     public ThresholdAssessment ThresholdAssessment { get; set; } = new();
 
     public string OverallComment { get; set; } = string.Empty;

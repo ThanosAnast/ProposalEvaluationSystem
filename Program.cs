@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using ProposalEvaluationSystem.Components;
+using ProposalEvaluationSystem.Models;
 using ProposalEvaluationSystem.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,6 +30,7 @@ builder.Services.AddSingleton<IComparisonCalculator, ComparisonCalculator>();
 builder.Services.AddSingleton<IExperimentRepository, FileExperimentRepository>();
 builder.Services.AddSingleton<IExperimentRunFactory, ExperimentRunFactory>();
 builder.Services.AddSingleton<IExperimentCsvExporter, ExperimentCsvExporter>();
+builder.Services.AddSingleton<IExperimentJsonExporter, ExperimentJsonExporter>();
 builder.Services.AddScoped<EvaluationWorkflowState>();
 
 builder.Services.AddHttpClient<OpenAiEvaluationService>((serviceProvider, httpClient) =>
@@ -88,6 +90,36 @@ app.MapGet("/api/experiments/criterion-comparisons.csv", async (
 
 app.MapGet("/api/experiments/export.csv", () =>
     Results.Redirect("/api/experiments/experiment-runs.csv"));
+
+app.MapGet("/api/experiments/{datasetId}/{runId}/download", async Task<IResult> (
+    string datasetId,
+    string runId,
+    IExperimentRepository repository,
+    IExperimentJsonExporter exporter,
+    CancellationToken cancellationToken) =>
+{
+    ExperimentRun? run;
+    try
+    {
+        run = await repository.GetAsync(datasetId, runId, cancellationToken);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest();
+    }
+
+    if (run is null)
+    {
+        return Results.NotFound();
+    }
+
+    var json = exporter.Export(run);
+    var fileName = $"{run.Metadata.DatasetId}_{run.Metadata.RunId}.json";
+    return Results.File(
+        Encoding.UTF8.GetBytes(json),
+        "application/json; charset=utf-8",
+        fileName);
+});
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

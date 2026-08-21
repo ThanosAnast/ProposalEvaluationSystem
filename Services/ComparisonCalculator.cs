@@ -67,6 +67,8 @@ public sealed class ComparisonCalculator(IScoreCalculator scoreCalculator) : ICo
             OfficialTotalScore = officialCalculation.TotalScore,
             LlmTotalScore = llmCalculation.TotalScore,
             TotalScoreDifference = llmCalculation.TotalScore - officialCalculation.TotalScore,
+            OfficialScoreBreakdown = officialCalculation.Criteria.ToList(),
+            LlmScoreBreakdown = llmCalculation.Criteria.ToList(),
             OfficialThresholdMet = officialCalculation.ThresholdAssessment.Passed,
             LlmThresholdMet = llmCalculation.ThresholdAssessment.Passed,
             ThresholdAgreement = officialCalculation.ThresholdAssessment.Passed == llmCalculation.ThresholdAssessment.Passed,

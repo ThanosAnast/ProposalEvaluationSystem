@@ -113,7 +113,10 @@ public sealed partial class FileExperimentRepository : IExperimentRepository, ID
                     ModelName = run.Metadata.ModelName,
                     TotalScore = run.IndependentEvaluation.TotalScore,
                     ThresholdResult = run.IndependentEvaluation.ThresholdAssessment.OverallResult,
-                    HasEsrComparison = run.ComparisonResult is not null
+                    HasEsrComparison = run.ComparisonResult is not null,
+                    OfficialTotalScore = run.ComparisonResult?.OfficialTotalScore,
+                    TotalScoreDifference = run.ComparisonResult?.TotalScoreDifference,
+                    ThresholdAgreement = run.ComparisonResult?.ThresholdAgreement
                 })
                 .OrderByDescending(summary => summary.CreatedAtUtc)
                 .ToArray();

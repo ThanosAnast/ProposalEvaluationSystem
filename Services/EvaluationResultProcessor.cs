@@ -63,6 +63,7 @@ public sealed class EvaluationResultProcessor(IScoreCalculator scoreCalculator) 
             ScopeAssessment = draft.ScopeAssessment,
             Criteria = orderedCriteria,
             TotalScore = calculation.TotalScore,
+            ScoreBreakdown = calculation.Criteria.ToList(),
             ThresholdAssessment = calculation.ThresholdAssessment,
             OverallComment = draft.OverallComment,
             EvaluationLimitations = draft.EvaluationLimitations,

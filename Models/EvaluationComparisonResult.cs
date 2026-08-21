@@ -13,6 +13,10 @@ public sealed class EvaluationComparisonResult
     /// <summary>LLM total score minus official ESR total score.</summary>
     public decimal TotalScoreDifference { get; set; }
 
+    public List<CriterionScoreCalculation> OfficialScoreBreakdown { get; set; } = [];
+
+    public List<CriterionScoreCalculation> LlmScoreBreakdown { get; set; } = [];
+
     public bool OfficialThresholdMet { get; set; }
 
     public bool LlmThresholdMet { get; set; }
