@@ -23,5 +23,6 @@ public sealed class EvaluationWorkflowState
     public void InvalidateReferenceInputs()
     {
         EsrComparison = null;
+        ExperimentRunId = null;
     }
 }

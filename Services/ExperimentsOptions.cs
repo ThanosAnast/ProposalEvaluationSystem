@@ -2,7 +2,7 @@ namespace ProposalEvaluationSystem.Services;
 
 public sealed class ExperimentsOptions
 {
-    public const string DefaultSchemaVersion = "1.0";
+    public const string DefaultSchemaVersion = "2.0";
 
     public bool StoreSensitiveContent { get; set; }
 

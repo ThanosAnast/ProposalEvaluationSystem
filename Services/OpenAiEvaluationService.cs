@@ -136,7 +136,10 @@ public sealed class OpenAiEvaluationService(
                     type = "array",
                     minItems = profile.Criteria.Count,
                     maxItems = profile.Criteria.Count,
-                    items = GetCriterionSchema(profile)
+                    items = new
+                    {
+                        anyOf = profile.Criteria.Select(GetCriterionSchema).ToArray()
+                    }
                 },
                 overallComment = new { type = "string" },
                 evaluationLimitations = StringArraySchema()
@@ -161,7 +164,7 @@ public sealed class OpenAiEvaluationService(
         }
     };
 
-    private static object GetCriterionSchema(EvaluationProfile profile) => new
+    private static object GetCriterionSchema(CriterionDefinition criterion) => new
     {
         type = "object",
         additionalProperties = false,
@@ -180,9 +183,9 @@ public sealed class OpenAiEvaluationService(
             criterionId = new
             {
                 type = "string",
-                @enum = profile.Criteria.Select(criterion => criterion.Id).ToArray()
+                @enum = new[] { criterion.Id }
             },
-            score = GetScoreSchema(profile),
+            score = GetScoreSchema(criterion),
             summary = new { type = "string" },
             strengths = StringArraySchema(),
             shortcomings = StringArraySchema(),
@@ -191,20 +194,18 @@ public sealed class OpenAiEvaluationService(
         }
     };
 
-    private static IReadOnlyDictionary<string, object> GetScoreSchema(EvaluationProfile profile)
+    private static IReadOnlyDictionary<string, object> GetScoreSchema(CriterionDefinition criterion)
     {
         var scoreSchema = new Dictionary<string, object>
         {
             ["type"] = "number",
-            ["minimum"] = profile.Criteria.Min(criterion => criterion.ScoreMinimum),
-            ["maximum"] = profile.Criteria.Max(criterion => criterion.ScoreMaximum)
+            ["minimum"] = criterion.ScoreMinimum,
+            ["maximum"] = criterion.ScoreMaximum
         };
 
-        var sharedIncrement = profile.Criteria[0].ScoreIncrement;
-        if (sharedIncrement.HasValue &&
-            profile.Criteria.All(criterion => criterion.ScoreIncrement == sharedIncrement))
+        if (criterion.ScoreIncrement.HasValue)
         {
-            scoreSchema["multipleOf"] = sharedIncrement.Value;
+            scoreSchema["multipleOf"] = criterion.ScoreIncrement.Value;
         }
 
         return scoreSchema;

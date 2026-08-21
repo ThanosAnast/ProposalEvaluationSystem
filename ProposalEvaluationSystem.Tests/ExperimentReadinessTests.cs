@@ -86,16 +86,16 @@ public sealed class ExperimentReadinessTests
     [Fact]
     public async Task EvaluationSchema_UsesFinalShapeAndProfileSpecificScoreEnvelope()
     {
-        var cases = new[]
+        var profiles = new[]
         {
-            (Profile: EvaluationProfiles.HorizonEuropeRiaIa, Maximum: 5m, Increment: (decimal?)0.5m, Count: 3),
-            (Profile: EvaluationProfiles.HorizonEuropeMscaStaffExchanges, Maximum: 5m, Increment: (decimal?)0.1m, Count: 3),
-            (Profile: EvaluationProfiles.ErasmusCbheStrand2, Maximum: 30m, Increment: (decimal?)null, Count: 4)
+            EvaluationProfiles.HorizonEuropeRiaIa,
+            EvaluationProfiles.HorizonEuropeMscaStaffExchanges,
+            EvaluationProfiles.ErasmusCbheStrand2
         };
 
-        foreach (var item in cases)
+        foreach (var profile in profiles)
         {
-            var payloadText = await CaptureEvaluationPayloadAsync(item.Profile);
+            var payloadText = await CaptureEvaluationPayloadAsync(profile);
             using var payload = JsonDocument.Parse(payloadText);
             var schema = payload.RootElement
                 .GetProperty("text")
@@ -110,29 +110,77 @@ public sealed class ExperimentReadinessTests
             Assert.False(schema.GetProperty("properties").TryGetProperty("thresholdMet", out _));
 
             var criteria = schema.GetProperty("properties").GetProperty("criteria");
-            Assert.Equal(item.Count, criteria.GetProperty("minItems").GetInt32());
-            Assert.Equal(item.Count, criteria.GetProperty("maxItems").GetInt32());
-            var criterionSchema = criteria.GetProperty("items");
-            Assert.Equal(
-                ["criterionId", "score", "summary", "strengths", "shortcomings", "evidence", "limitations"],
-                criterionSchema.GetProperty("required").EnumerateArray().Select(value => value.GetString()!).ToArray());
-            var score = criterionSchema.GetProperty("properties").GetProperty("score");
-            Assert.Equal(0m, score.GetProperty("minimum").GetDecimal());
-            Assert.Equal(item.Maximum, score.GetProperty("maximum").GetDecimal());
-            Assert.Equal(item.Increment.HasValue, score.TryGetProperty("multipleOf", out var multipleOf));
-            if (item.Increment.HasValue)
-            {
-                Assert.Equal(item.Increment.Value, multipleOf.GetDecimal());
-            }
+            Assert.Equal(profile.Criteria.Count, criteria.GetProperty("minItems").GetInt32());
+            Assert.Equal(profile.Criteria.Count, criteria.GetProperty("maxItems").GetInt32());
 
-            var criterionIds = criterionSchema.GetProperty("properties")
-                .GetProperty("criterionId")
-                .GetProperty("enum")
+            var criterionSchemas = criteria.GetProperty("items")
+                .GetProperty("anyOf")
                 .EnumerateArray()
-                .Select(value => value.GetString()!)
                 .ToArray();
-            Assert.Equal(item.Profile.Criteria.Select(criterion => criterion.Id), criterionIds);
+            Assert.Equal(profile.Criteria.Count, criterionSchemas.Length);
+
+            foreach (var definition in profile.Criteria)
+            {
+                var criterionSchema = criterionSchemas.Single(candidate =>
+                    candidate.GetProperty("properties")
+                        .GetProperty("criterionId")
+                        .GetProperty("enum")[0]
+                        .GetString() == definition.Id);
+
+                Assert.False(criterionSchema.GetProperty("additionalProperties").GetBoolean());
+                Assert.Equal(
+                    ["criterionId", "score", "summary", "strengths", "shortcomings", "evidence", "limitations"],
+                    criterionSchema.GetProperty("required").EnumerateArray().Select(value => value.GetString()!).ToArray());
+
+                var score = criterionSchema.GetProperty("properties").GetProperty("score");
+                Assert.Equal(definition.ScoreMinimum, score.GetProperty("minimum").GetDecimal());
+                Assert.Equal(definition.ScoreMaximum, score.GetProperty("maximum").GetDecimal());
+                Assert.Equal(
+                    definition.ScoreIncrement.HasValue,
+                    score.TryGetProperty("multipleOf", out var multipleOf));
+                if (definition.ScoreIncrement.HasValue)
+                {
+                    Assert.Equal(definition.ScoreIncrement.Value, multipleOf.GetDecimal());
+                }
+
+                Assert.Equal(
+                    [definition.Id],
+                    criterionSchema.GetProperty("properties")
+                        .GetProperty("criterionId")
+                        .GetProperty("enum")
+                        .EnumerateArray()
+                        .Select(value => value.GetString()!)
+                        .ToArray());
+            }
         }
+    }
+
+    [Fact]
+    public void JsonExport_ContainsReproducibilitySnapshotsButNeverSensitiveSourceContent()
+    {
+        var run = CreateExperimentRun();
+        run.SensitiveContent = new ExperimentSensitiveContent
+        {
+            CallText = "SECRET_CALL_TEXT",
+            ProposalText = "SECRET_PROPOSAL_TEXT",
+            EsrText = "SECRET_ESR_TEXT",
+            GeneratedPrompt = "SECRET_GENERATED_PROMPT"
+        };
+        run.IndependentEvaluation.GeneratedPrompt = "SECRET_GENERATED_PROMPT";
+
+        var json = new ExperimentJsonExporter().Export(run);
+
+        Assert.Contains("\"experimentSchemaVersion\": \"2.0\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"profileSnapshot\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"promptTemplateSnapshot\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"content\": \"Frozen prompt template\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"openAiRequestSnapshot\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"scoreBreakdown\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("sensitiveContent", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SECRET_CALL_TEXT", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_PROPOSAL_TEXT", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_ESR_TEXT", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_GENERATED_PROMPT", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -404,7 +452,44 @@ public sealed class ExperimentReadinessTests
                 EvaluationApiMetadata = independent.ApiMetadata,
                 ComparisonApiMetadata = comparison.ApiMetadata,
                 GitCommitSha = "abc123",
-                ExperimentSchemaVersion = ExperimentsOptions.DefaultSchemaVersion
+                ExperimentSchemaVersion = ExperimentsOptions.DefaultSchemaVersion,
+                ProfileSnapshot = new EvaluationProfileSnapshot
+                {
+                    Id = Profile.Id,
+                    ProgrammeType = Profile.ProgrammeType,
+                    DisplayName = Profile.DisplayName,
+                    PromptTemplateFileName = Profile.PromptTemplateFileName,
+                    ScoringMode = Profile.ScoringMode,
+                    OverallThreshold = Profile.OverallThreshold,
+                    MaximumTotal = Profile.MaximumTotal,
+                    Criteria = Profile.Criteria.Select(criterion => new EvaluationCriterionSnapshot
+                    {
+                        Id = criterion.Id,
+                        DisplayName = criterion.DisplayName,
+                        ScoreMinimum = criterion.ScoreMinimum,
+                        ScoreMaximum = criterion.ScoreMaximum,
+                        ScoreIncrement = criterion.ScoreIncrement,
+                        Threshold = criterion.Threshold,
+                        WeightPercentage = criterion.WeightPercentage
+                    }).ToList()
+                },
+                PromptTemplateSnapshot = new PromptTemplateSnapshot
+                {
+                    FileName = Profile.PromptTemplateFileName,
+                    ContentSha256 = "prompt-sha",
+                    Content = "Frozen prompt template"
+                },
+                OpenAiRequestSnapshot = new OpenAiRequestSnapshot
+                {
+                    ConfiguredModel = OpenAiOptions.DefaultModel,
+                    ReasoningEffort = "medium",
+                    MaxOutputTokens = 5000,
+                    TimeoutSeconds = 180,
+                    MaxAttempts = 3,
+                    InitialRetryDelayMilliseconds = 500,
+                    StoreResponse = false,
+                    Endpoint = "https://api.openai.com/v1/responses"
+                }
             },
             IndependentEvaluation = independent,
             ComparisonResult = comparison

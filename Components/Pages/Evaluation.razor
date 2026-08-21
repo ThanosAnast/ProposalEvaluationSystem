@@ -57,6 +57,7 @@
                            class="form-control"
                            @bind="datasetId"
                            @bind:event="oninput"
+                           @bind:after="DatasetIdentityChanged"
                            placeholder="e.g. proposal-dataset-001" />
                     <div class="form-text">Letters, numbers, periods, underscores, and hyphens only.</div>
                 </div>
@@ -68,7 +69,15 @@
                             <option value="@profile.Id">@profile.DisplayName</option>
                         }
                     </select>
-                    <div class="form-text">The active prompt is selected automatically by the profile.</div>
+                    <div class="form-text">
+                        The active prompt is selected automatically by the profile.
+                        @SelectedProfile.ScoringMode · overall threshold
+                        @FormatScore(SelectedProfile.OverallThreshold) / @FormatScore(SelectedProfile.MaximumTotal).
+                        @if (SelectedProfile.Criteria.Any(criterion => criterion.Threshold.HasValue))
+                        {
+                            <span> Every configured criterion threshold must also be met.</span>
+                        }
+                    </div>
                 </div>
             </div>
         </div>
@@ -158,6 +167,10 @@
                                     {
                                         <span> &middot; Weight @FormatScore(criterion.WeightPercentage.Value)%</span>
                                     }
+                                    @if (criterion.Threshold.HasValue)
+                                    {
+                                        <span> &middot; Pass threshold ≥ @FormatScore(criterion.Threshold.Value)</span>
+                                    }
                                 </div>
                             </div>
                         }
@@ -199,11 +212,21 @@
                         }
                         else
                         {
-                            <span>Only hashes, filenames, metadata, evaluation output, and comparison output will be stored.</span>
+                            <span>Source text is excluded. Hashes, scoring rules, the prompt template, request metadata, and generated results will be stored.</span>
                         }
                     </p>
                 </div>
-                <button class="btn btn-outline-success" type="button" @onclick="SaveExperimentAsync" disabled="@(!CanSaveExperiment)">Save Experiment Run</button>
+                <div class="d-flex flex-wrap gap-2">
+                    @if (!string.IsNullOrWhiteSpace(WorkflowState.ExperimentRunId))
+                    {
+                        <a class="btn btn-outline-primary" href="@GetSavedRunDetailsUrl()">View Saved Run</a>
+                        <a class="btn btn-success" href="@GetSavedRunDownloadUrl()">Download JSON</a>
+                    }
+                    else
+                    {
+                        <button class="btn btn-outline-success" type="button" @onclick="SaveExperimentAsync" disabled="@(!CanSaveExperiment)">Save Experiment Run</button>
+                    }
+                </div>
             </div>
         </section>
     }
@@ -255,7 +278,8 @@
 
     private bool CanSaveExperiment => !isBusy &&
         WorkflowState.IndependentEvaluation is not null &&
-        !string.IsNullOrWhiteSpace(datasetId);
+        !string.IsNullOrWhiteSpace(datasetId) &&
+        string.IsNullOrWhiteSpace(WorkflowState.ExperimentRunId);
 
     protected override void OnInitialized()
     {
@@ -646,13 +670,23 @@
             currentScore == referenceScore.OfficialScore);
     }
 
-    private void ReferenceInputsChanged() => WorkflowState.InvalidateReferenceInputs();
+    private void ReferenceInputsChanged()
+    {
+        WorkflowState.InvalidateReferenceInputs();
+        statusMessage = null;
+    }
+
+    private void DatasetIdentityChanged()
+    {
+        WorkflowState.ExperimentRunId = null;
+        statusMessage = null;
+    }
 
     private void InvalidateForDocument(DocumentType documentType)
     {
         if (documentType == DocumentType.EvaluationSummaryReport)
         {
-            WorkflowState.InvalidateReferenceInputs();
+            ReferenceInputsChanged();
             return;
         }
 
@@ -680,6 +714,12 @@
     private static string GetOfficialScoreInputId(string criterionId) => $"official-{criterionId}";
 
     private static string GetOfficialScoreHelpId(string criterionId) => $"official-{criterionId}-help";
+
+    private string GetSavedRunDetailsUrl() =>
+        $"/experiment-history/{Uri.EscapeDataString(datasetId)}/{Uri.EscapeDataString(WorkflowState.ExperimentRunId!)}";
+
+    private string GetSavedRunDownloadUrl() =>
+        $"/api/experiments/{Uri.EscapeDataString(datasetId)}/{Uri.EscapeDataString(WorkflowState.ExperimentRunId!)}/download";
 
     private static string FormatScore(decimal score) =>
         score.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);

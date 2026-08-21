@@ -42,9 +42,12 @@
                             <th>Date (UTC)</th>
                             <th>Profile</th>
                             <th>Model</th>
-                            <th class="text-end">Total</th>
-                            <th>Threshold</th>
-                            <th>ESR Comparison</th>
+                            <th class="text-end">LLM total</th>
+                            <th class="text-end">ESR total</th>
+                            <th class="text-end">Δ</th>
+                            <th>LLM threshold</th>
+                            <th>Agreement</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -57,8 +60,29 @@
                                 <td>@summary.EvaluationProfileId</td>
                                 <td>@summary.ModelName</td>
                                 <td class="text-end">@summary.TotalScore.ToString("0.0")</td>
+                                <td class="text-end">@(summary.OfficialTotalScore?.ToString("0.0") ?? "—")</td>
+                                <td class="text-end">@(summary.TotalScoreDifference?.ToString("+0.0;-0.0;0.0") ?? "—")</td>
                                 <td>@summary.ThresholdResult</td>
-                                <td>@(summary.HasEsrComparison ? "Yes" : "No")</td>
+                                <td>
+                                    @if (summary.ThresholdAgreement is bool agreement)
+                                    {
+                                        <span class="badge @(agreement ? "text-bg-success" : "text-bg-warning")">
+                                            @(agreement ? "Agreement" : "Disagreement")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">No ESR</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <div class="d-flex justify-content-end gap-1">
+                                        <a class="btn btn-sm btn-outline-primary"
+                                           href="@GetDetailsUrl(summary)">Details</a>
+                                        <a class="btn btn-sm btn-outline-success"
+                                           href="@GetDownloadUrl(summary)">JSON</a>
+                                    </div>
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -72,6 +96,12 @@
     private IReadOnlyList<ExperimentRunSummary> summaries = [];
     private bool isLoading = true;
     private string? errorMessage;
+
+    private static string GetDetailsUrl(ExperimentRunSummary summary) =>
+        $"/experiment-history/{Uri.EscapeDataString(summary.DatasetId)}/{Uri.EscapeDataString(summary.RunId)}";
+
+    private static string GetDownloadUrl(ExperimentRunSummary summary) =>
+        $"/api/experiments/{Uri.EscapeDataString(summary.DatasetId)}/{Uri.EscapeDataString(summary.RunId)}/download";
 
     protected override async Task OnInitializedAsync()
     {

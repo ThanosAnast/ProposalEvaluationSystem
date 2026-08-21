@@ -8,14 +8,17 @@ namespace ProposalEvaluationSystem.Services;
 public sealed class ExperimentRunFactory : IExperimentRunFactory
 {
     private readonly ExperimentsOptions experimentOptions;
+    private readonly OpenAiOptions openAiOptions;
     private readonly string gitCommitSha;
 
     public ExperimentRunFactory(
-        IOptions<ExperimentsOptions> options,
+        IOptions<ExperimentsOptions> experimentOptions,
+        IOptions<OpenAiOptions> openAiOptions,
         IWebHostEnvironment environment)
     {
-        experimentOptions = options.Value;
-        gitCommitSha = ResolveGitCommitSha(experimentOptions.GitCommitSha, environment.ContentRootPath);
+        this.experimentOptions = experimentOptions.Value;
+        this.openAiOptions = openAiOptions.Value;
+        gitCommitSha = ResolveGitCommitSha(this.experimentOptions.GitCommitSha, environment.ContentRootPath);
     }
 
     public ExperimentRun Create(ExperimentRunCreationRequest request)
@@ -48,6 +51,24 @@ public sealed class ExperimentRunFactory : IExperimentRunFactory
                 ExperimentSchemaVersion = string.IsNullOrWhiteSpace(experimentOptions.ExperimentSchemaVersion)
                     ? ExperimentsOptions.DefaultSchemaVersion
                     : experimentOptions.ExperimentSchemaVersion,
+                ProfileSnapshot = CreateProfileSnapshot(request.Profile),
+                PromptTemplateSnapshot = new PromptTemplateSnapshot
+                {
+                    FileName = request.IndependentEvaluation.PromptTemplateUsed,
+                    ContentSha256 = ContentHashService.ComputeSha256(request.PromptContent),
+                    Content = request.PromptContent
+                },
+                OpenAiRequestSnapshot = new OpenAiRequestSnapshot
+                {
+                    ConfiguredModel = openAiOptions.Model,
+                    ReasoningEffort = openAiOptions.ReasoningEffort,
+                    MaxOutputTokens = openAiOptions.MaxOutputTokens,
+                    TimeoutSeconds = openAiOptions.TimeoutSeconds,
+                    MaxAttempts = openAiOptions.MaxAttempts,
+                    InitialRetryDelayMilliseconds = openAiOptions.InitialRetryDelayMilliseconds,
+                    StoreResponse = false,
+                    Endpoint = openAiOptions.Endpoint
+                },
                 EvaluationApiMetadata = request.IndependentEvaluation.ApiMetadata,
                 ComparisonApiMetadata = request.ComparisonResult?.ApiMetadata
             },
@@ -70,7 +91,31 @@ public sealed class ExperimentRunFactory : IExperimentRunFactory
     private static ExperimentDocumentMetadata CreateDocumentMetadata(ProcessedDocument document) => new()
     {
         FileName = document.FileName,
-        ContentSha256 = ContentHashService.ComputeSha256(document.ExtractedText)
+        ContentSha256 = ContentHashService.ComputeSha256(document.ExtractedText),
+        DocumentType = document.DocumentType,
+        ExtractedCharacterCount = document.CharacterCount,
+        ExtractionSucceeded = document.ExtractionSucceeded
+    };
+
+    private static EvaluationProfileSnapshot CreateProfileSnapshot(EvaluationProfile profile) => new()
+    {
+        Id = profile.Id,
+        ProgrammeType = profile.ProgrammeType,
+        DisplayName = profile.DisplayName,
+        PromptTemplateFileName = profile.PromptTemplateFileName,
+        ScoringMode = profile.ScoringMode,
+        OverallThreshold = profile.OverallThreshold,
+        MaximumTotal = profile.MaximumTotal,
+        Criteria = profile.Criteria.Select(criterion => new EvaluationCriterionSnapshot
+        {
+            Id = criterion.Id,
+            DisplayName = criterion.DisplayName,
+            ScoreMinimum = criterion.ScoreMinimum,
+            ScoreMaximum = criterion.ScoreMaximum,
+            ScoreIncrement = criterion.ScoreIncrement,
+            Threshold = criterion.Threshold,
+            WeightPercentage = criterion.WeightPercentage
+        }).ToList()
     };
 
     private static string ResolveGitCommitSha(string? configuredSha, string contentRootPath)

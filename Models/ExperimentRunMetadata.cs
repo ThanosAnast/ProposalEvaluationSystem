@@ -34,6 +34,12 @@ public sealed class ExperimentRunMetadata
 
     public string ExperimentSchemaVersion { get; set; } = string.Empty;
 
+    public EvaluationProfileSnapshot? ProfileSnapshot { get; set; }
+
+    public PromptTemplateSnapshot? PromptTemplateSnapshot { get; set; }
+
+    public OpenAiRequestSnapshot? OpenAiRequestSnapshot { get; set; }
+
     public OpenAiResponseMetadata? EvaluationApiMetadata { get; set; }
 
     public OpenAiResponseMetadata? ComparisonApiMetadata { get; set; }

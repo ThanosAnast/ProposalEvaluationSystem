@@ -87,6 +87,7 @@ public sealed class EvaluationCoreTests
         var result = processor.Process(draft, request, "test-model");
 
         Assert.Equal(10.5m, result.TotalScore);
+        Assert.Equal([3m, 3.5m, 4m], result.ScoreBreakdown.Select(item => item.ContributionToTotal).ToArray());
         Assert.Equal(result.TotalScore, result.ThresholdAssessment.TotalScore);
     }
 
@@ -150,7 +151,7 @@ public sealed class EvaluationCoreTests
     }
 
     [Fact]
-    public void EsrOnlyChange_PreservesIndependentEvaluation()
+    public void EsrOnlyChange_PreservesIndependentEvaluationAndClearsSavedRunIdentity()
     {
         var state = CreatePopulatedWorkflowState();
         var originalEvaluation = state.IndependentEvaluation;
@@ -160,7 +161,7 @@ public sealed class EvaluationCoreTests
         Assert.Same(originalEvaluation, state.IndependentEvaluation);
         Assert.NotNull(state.GeneratedPrompt);
         Assert.Null(state.EsrComparison);
-        Assert.NotNull(state.ExperimentRunId);
+        Assert.Null(state.ExperimentRunId);
     }
 
     [Fact]
