@@ -96,6 +96,47 @@ public sealed partial class FileExperimentRepository : IExperimentRepository, ID
         }
     }
 
+    public async Task<bool> DeleteAsync(
+        string datasetId,
+        string runId,
+        CancellationToken cancellationToken = default)
+    {
+        datasetId = ValidateDatasetId(datasetId);
+        runId = ValidateRunId(runId);
+
+        await fileGate.WaitAsync(cancellationToken);
+        try
+        {
+            var datasetDirectory = Path.Combine(experimentRoot, datasetId);
+            if (!Directory.Exists(datasetDirectory))
+            {
+                return false;
+            }
+
+            var matchingPaths = Directory
+                .EnumerateFiles(datasetDirectory, $"*_{runId}.json")
+                .Take(2)
+                .ToArray();
+            if (matchingPaths.Length == 0)
+            {
+                return false;
+            }
+
+            if (matchingPaths.Length > 1)
+            {
+                throw new InvalidOperationException(
+                    $"Multiple stored files were found for experiment run '{runId}'. No file was deleted.");
+            }
+
+            File.Delete(matchingPaths[0]);
+            return true;
+        }
+        finally
+        {
+            fileGate.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<ExperimentRunSummary>> GetSummariesAsync(
         CancellationToken cancellationToken = default)
     {

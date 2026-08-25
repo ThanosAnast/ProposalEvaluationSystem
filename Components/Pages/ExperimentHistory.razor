@@ -18,6 +18,11 @@
         </div>
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="alert alert-success">@statusMessage</div>
+    }
+
     @if (!string.IsNullOrWhiteSpace(errorMessage))
     {
         <div class="alert alert-danger">@errorMessage</div>
@@ -76,12 +81,36 @@
                                     }
                                 </td>
                                 <td class="text-end">
-                                    <div class="d-flex justify-content-end gap-1">
-                                        <a class="btn btn-sm btn-outline-primary"
-                                           href="@GetDetailsUrl(summary)">Details</a>
-                                        <a class="btn btn-sm btn-outline-success"
-                                           href="@GetDownloadUrl(summary)">JSON</a>
-                                    </div>
+                                    @if (IsDeletePending(summary))
+                                    {
+                                        <div class="d-flex align-items-center justify-content-end gap-1">
+                                            <span class="text-danger fw-semibold me-1">Delete permanently?</span>
+                                            <button class="btn btn-sm btn-danger"
+                                                    type="button"
+                                                    disabled="@(deletingRunId is not null)"
+                                                    @onclick="@(() => DeleteExperimentAsync(summary))">
+                                                @(IsDeleting(summary) ? "Deleting…" : "Confirm")
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary"
+                                                    type="button"
+                                                    disabled="@(deletingRunId is not null)"
+                                                    @onclick="CancelDelete">Cancel</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex justify-content-end gap-1">
+                                            <a class="btn btn-sm btn-outline-primary"
+                                               href="@GetDetailsUrl(summary)">Details</a>
+                                            <a class="btn btn-sm btn-outline-success"
+                                               href="@GetDownloadUrl(summary)">JSON</a>
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                    type="button"
+                                                    disabled="@(deletingRunId is not null)"
+                                                    aria-label="Delete experiment run @summary.RunId"
+                                                    @onclick="@(() => RequestDelete(summary))">Delete</button>
+                                        </div>
+                                    }
                                 </td>
                             </tr>
                         }
@@ -96,12 +125,76 @@
     private IReadOnlyList<ExperimentRunSummary> summaries = [];
     private bool isLoading = true;
     private string? errorMessage;
+    private string? statusMessage;
+    private string? pendingDeleteDatasetId;
+    private string? pendingDeleteRunId;
+    private string? deletingRunId;
 
     private static string GetDetailsUrl(ExperimentRunSummary summary) =>
         $"/experiment-history/{Uri.EscapeDataString(summary.DatasetId)}/{Uri.EscapeDataString(summary.RunId)}";
 
     private static string GetDownloadUrl(ExperimentRunSummary summary) =>
         $"/api/experiments/{Uri.EscapeDataString(summary.DatasetId)}/{Uri.EscapeDataString(summary.RunId)}/download";
+
+    private bool IsDeletePending(ExperimentRunSummary summary) =>
+        string.Equals(pendingDeleteDatasetId, summary.DatasetId, StringComparison.Ordinal) &&
+        string.Equals(pendingDeleteRunId, summary.RunId, StringComparison.Ordinal);
+
+    private bool IsDeleting(ExperimentRunSummary summary) =>
+        string.Equals(deletingRunId, summary.RunId, StringComparison.Ordinal);
+
+    private void RequestDelete(ExperimentRunSummary summary)
+    {
+        errorMessage = null;
+        statusMessage = null;
+        pendingDeleteDatasetId = summary.DatasetId;
+        pendingDeleteRunId = summary.RunId;
+    }
+
+    private void CancelDelete()
+    {
+        pendingDeleteDatasetId = null;
+        pendingDeleteRunId = null;
+    }
+
+    private async Task DeleteExperimentAsync(ExperimentRunSummary summary)
+    {
+        if (!IsDeletePending(summary) || deletingRunId is not null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        statusMessage = null;
+        deletingRunId = summary.RunId;
+
+        try
+        {
+            var deleted = await ExperimentRepository.DeleteAsync(summary.DatasetId, summary.RunId);
+            if (!deleted)
+            {
+                summaries = await ExperimentRepository.GetSummariesAsync();
+                errorMessage = "The experiment run was not found. The history list has been refreshed.";
+                return;
+            }
+
+            summaries = summaries
+                .Where(item =>
+                    !string.Equals(item.DatasetId, summary.DatasetId, StringComparison.Ordinal) ||
+                    !string.Equals(item.RunId, summary.RunId, StringComparison.Ordinal))
+                .ToArray();
+            statusMessage = $"Experiment run {summary.RunId} was permanently deleted from dataset {summary.DatasetId}.";
+        }
+        catch (Exception exception)
+        {
+            errorMessage = $"The experiment run could not be deleted: {exception.Message}";
+        }
+        finally
+        {
+            deletingRunId = null;
+            CancelDelete();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {

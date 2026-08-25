@@ -185,6 +185,32 @@ h1:focus {
     white-space: nowrap;
 }
 
+.operation-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(17, 24, 39, 0.58);
+    backdrop-filter: blur(2px);
+}
+
+.operation-overlay-card {
+    width: min(28rem, 100%);
+    padding: 2rem;
+    text-align: center;
+    background: #ffffff;
+    border: 1px solid #d8dee4;
+    border-radius: 12px;
+    box-shadow: 0 1.25rem 3rem rgba(17, 24, 39, 0.28);
+}
+
+.operation-overlay-card .spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
 .valid.modified:not([type=checkbox]) {
     outline: 1px solid #26b050;
 }
