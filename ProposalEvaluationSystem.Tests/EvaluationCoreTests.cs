@@ -201,6 +201,44 @@ public sealed class EvaluationCoreTests
     }
 
     [Fact]
+    public async Task ExperimentRun_CanBeDeletedIndividually_WithoutAffectingOtherRuns()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            using var repository = new FileExperimentRepository(
+                root,
+                Options.Create(new ExperimentsOptions { StoreSensitiveContent = false }));
+            var target = CreateExperimentRun("dataset-01");
+            var sibling = CreateExperimentRun("dataset-01");
+            var sameRunIdInAnotherDataset = CreateExperimentRun("dataset-02");
+            sameRunIdInAnotherDataset.Metadata.RunId = target.Metadata.RunId;
+
+            await repository.SaveAsync(target);
+            await repository.SaveAsync(sibling);
+            await repository.SaveAsync(sameRunIdInAnotherDataset);
+
+            var deleted = await repository.DeleteAsync(
+                target.Metadata.DatasetId,
+                target.Metadata.RunId);
+
+            Assert.True(deleted);
+            Assert.Null(await repository.GetAsync(target.Metadata.DatasetId, target.Metadata.RunId));
+            Assert.NotNull(await repository.GetAsync(sibling.Metadata.DatasetId, sibling.Metadata.RunId));
+            Assert.NotNull(await repository.GetAsync(
+                sameRunIdInAnotherDataset.Metadata.DatasetId,
+                sameRunIdInAnotherDataset.Metadata.RunId));
+            Assert.False(await repository.DeleteAsync(
+                target.Metadata.DatasetId,
+                target.Metadata.RunId));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task SensitiveContent_IsNotSaved_WhenOptionIsFalse()
     {
         var root = CreateTemporaryDirectory();
