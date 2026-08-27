@@ -69,11 +69,11 @@ public sealed class OpenAiEsrComparisonService(
 
     private object CreateRequestPayload(EsrComparisonRequest request) => new
     {
-        model = openAiOptions.Model,
+        model = openAiOptions.ComparisonModel,
         store = false,
         reasoning = new
         {
-            effort = openAiOptions.ReasoningEffort
+            effort = openAiOptions.ComparisonReasoningEffort
         },
         input = new object[]
         {
@@ -112,7 +112,7 @@ public sealed class OpenAiEsrComparisonService(
                 schema = GetResponseSchema(request.Profile)
             }
         },
-        max_output_tokens = openAiOptions.MaxOutputTokens
+        max_output_tokens = openAiOptions.ComparisonMaxOutputTokens
     };
 
     private static string BuildComparisonPrompt(EsrComparisonRequest request)

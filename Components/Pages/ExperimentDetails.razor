@@ -50,8 +50,13 @@
                     <dd class="col-md-8"><code>@run.Metadata.ExperimentSchemaVersion</code></dd>
                     <dt class="col-md-4">Evaluation profile</dt>
                     <dd class="col-md-8"><code>@run.Metadata.EvaluationProfileId</code></dd>
-                    <dt class="col-md-4">Actual response model</dt>
+                    <dt class="col-md-4">Evaluation response model</dt>
                     <dd class="col-md-8"><code>@run.Metadata.ModelName</code></dd>
+                    @if (run.Metadata.ComparisonApiMetadata is not null)
+                    {
+                        <dt class="col-md-4">Comparison response model</dt>
+                        <dd class="col-md-8"><code>@run.Metadata.ComparisonApiMetadata.Model</code></dd>
+                    }
                     <dt class="col-md-4">Application version</dt>
                     <dd class="col-md-8"><code>@run.Metadata.ApplicationVersion</code></dd>
                     <dt class="col-md-4">Git commit</dt>
@@ -135,7 +140,35 @@
             var request = run.Metadata.OpenAiRequestSnapshot;
             <section class="card section-card">
                 <div class="card-body">
-                    <h2 class="h5">OpenAI request snapshot</h2>
+                    <h2 class="h5">Independent-evaluation OpenAI request snapshot</h2>
+                    <dl class="row mb-0">
+                        <dt class="col-md-4">Configured model</dt>
+                        <dd class="col-md-8"><code>@request.ConfiguredModel</code></dd>
+                        <dt class="col-md-4">Reasoning effort</dt>
+                        <dd class="col-md-8"><code>@request.ReasoningEffort</code></dd>
+                        <dt class="col-md-4">Maximum output tokens</dt>
+                        <dd class="col-md-8">@request.MaxOutputTokens</dd>
+                        <dt class="col-md-4">HTTP timeout</dt>
+                        <dd class="col-md-8">@request.TimeoutSeconds seconds</dd>
+                        <dt class="col-md-4">Maximum attempts</dt>
+                        <dd class="col-md-8">@request.MaxAttempts</dd>
+                        <dt class="col-md-4">Initial retry delay</dt>
+                        <dd class="col-md-8">@request.InitialRetryDelayMilliseconds ms</dd>
+                        <dt class="col-md-4">API response storage</dt>
+                        <dd class="col-md-8">@(request.StoreResponse ? "Enabled" : "Disabled")</dd>
+                        <dt class="col-md-4">Endpoint</dt>
+                        <dd class="col-md-8 text-break"><code>@request.Endpoint</code></dd>
+                    </dl>
+                </div>
+            </section>
+        }
+
+        @if (run.Metadata.ComparisonOpenAiRequestSnapshot is not null)
+        {
+            var request = run.Metadata.ComparisonOpenAiRequestSnapshot;
+            <section class="card section-card">
+                <div class="card-body">
+                    <h2 class="h5">ESR qualitative-comparison OpenAI request snapshot</h2>
                     <dl class="row mb-0">
                         <dt class="col-md-4">Configured model</dt>
                         <dd class="col-md-8"><code>@request.ConfiguredModel</code></dd>

@@ -22,7 +22,7 @@ public sealed class ComparisonCalculator(IScoreCalculator scoreCalculator) : ICo
                 ?? reference.CriterionId,
             Score = reference.OfficialScore
         }).ToArray();
-        var officialCalculation = scoreCalculator.Calculate(profile, officialCriteria);
+        var officialCalculation = scoreCalculator.CalculateReference(profile, officialCriteria);
         var llmCalculation = scoreCalculator.Calculate(profile, independentEvaluation.Criteria);
         var officialById = officialCriteria.ToDictionary(criterion => criterion.CriterionId, StringComparer.Ordinal);
         var llmById = independentEvaluation.Criteria.ToDictionary(criterion => criterion.CriterionId, StringComparer.Ordinal);

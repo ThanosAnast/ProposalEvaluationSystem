@@ -64,9 +64,9 @@
                                 <td>@summary.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
                                 <td>@summary.EvaluationProfileId</td>
                                 <td>@summary.ModelName</td>
-                                <td class="text-end">@summary.TotalScore.ToString("0.0")</td>
-                                <td class="text-end">@(summary.OfficialTotalScore?.ToString("0.0") ?? "—")</td>
-                                <td class="text-end">@(summary.TotalScoreDifference?.ToString("+0.0;-0.0;0.0") ?? "—")</td>
+                                <td class="text-end">@summary.TotalScore.ToString("0.##")</td>
+                                <td class="text-end">@(summary.OfficialTotalScore?.ToString("0.##") ?? "—")</td>
+                                <td class="text-end">@(summary.TotalScoreDifference?.ToString("+0.##;-0.##;0") ?? "—")</td>
                                 <td>@summary.ThresholdResult</td>
                                 <td>
                                     @if (summary.ThresholdAgreement is bool agreement)

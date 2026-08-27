@@ -5,6 +5,17 @@ namespace ProposalEvaluationSystem.Services;
 public sealed class ScoreCalculator : IScoreCalculator
 {
     public ScoreCalculation Calculate(EvaluationProfile profile, IReadOnlyCollection<CriterionEvaluation> criteria)
+        => CalculateCore(profile, criteria, enforceScoreIncrement: true);
+
+    public ScoreCalculation CalculateReference(
+        EvaluationProfile profile,
+        IReadOnlyCollection<CriterionEvaluation> criteria)
+        => CalculateCore(profile, criteria, enforceScoreIncrement: false);
+
+    private ScoreCalculation CalculateCore(
+        EvaluationProfile profile,
+        IReadOnlyCollection<CriterionEvaluation> criteria,
+        bool enforceScoreIncrement)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(criteria);
@@ -29,7 +40,7 @@ public sealed class ScoreCalculator : IScoreCalculator
 
         foreach (var definition in profile.Criteria)
         {
-            ValidateScore(profile, definition, byId[definition.Id][0].Score);
+            ValidateScore(profile, definition, byId[definition.Id][0].Score, enforceScoreIncrement);
         }
 
         var criterionCalculations = profile.Criteria
@@ -102,6 +113,16 @@ public sealed class ScoreCalculator : IScoreCalculator
     }
 
     public bool IsValidScore(EvaluationProfile profile, string criterionId, decimal score)
+        => IsValidScoreCore(profile, criterionId, score, enforceScoreIncrement: true);
+
+    public bool IsValidReferenceScore(EvaluationProfile profile, string criterionId, decimal score)
+        => IsValidScoreCore(profile, criterionId, score, enforceScoreIncrement: false);
+
+    private static bool IsValidScoreCore(
+        EvaluationProfile profile,
+        string criterionId,
+        decimal score,
+        bool enforceScoreIncrement)
     {
         if (profile is null ||
             !profile.Enabled ||
@@ -118,21 +139,23 @@ public sealed class ScoreCalculator : IScoreCalculator
             return false;
         }
 
-        return !definition.ScoreIncrement.HasValue ||
+        return !enforceScoreIncrement ||
+               !definition.ScoreIncrement.HasValue ||
                decimal.Remainder(score - definition.ScoreMinimum, definition.ScoreIncrement.Value) == 0m;
     }
 
     private void ValidateScore(
         EvaluationProfile profile,
         CriterionDefinition definition,
-        decimal score)
+        decimal score,
+        bool enforceScoreIncrement)
     {
-        if (IsValidScore(profile, definition.Id, score))
+        if (IsValidScoreCore(profile, definition.Id, score, enforceScoreIncrement))
         {
             return;
         }
 
-        var incrementText = definition.ScoreIncrement.HasValue
+        var incrementText = enforceScoreIncrement && definition.ScoreIncrement.HasValue
             ? $" in increments of {definition.ScoreIncrement:0.##}"
             : string.Empty;
         throw new ScoreValidationException(
@@ -164,10 +187,10 @@ public sealed class ScoreCalculator : IScoreCalculator
             ? "weighted total score"
             : "total score";
         var overallText = overallThresholdMet
-            ? $"The {totalDescription} of {total:0.0} meets the required " +
-              $"{profile.OverallThreshold:0.0} out of {profile.MaximumTotal:0.0}."
-            : $"The {totalDescription} of {total:0.0} is below the required " +
-              $"{profile.OverallThreshold:0.0} out of {profile.MaximumTotal:0.0}.";
+            ? $"The {totalDescription} of {total:0.##} meets the required " +
+              $"{profile.OverallThreshold:0.##} out of {profile.MaximumTotal:0.##}."
+            : $"The {totalDescription} of {total:0.##} is below the required " +
+              $"{profile.OverallThreshold:0.##} out of {profile.MaximumTotal:0.##}.";
 
         return $"{individualText} {overallText}";
     }

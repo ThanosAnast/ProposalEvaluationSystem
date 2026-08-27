@@ -39,13 +39,17 @@ public sealed class ExperimentReadinessTests
     }
 
     [Fact]
-    public async Task ComparisonPayload_DisablesStorage_AndUsesConfiguredReasoning()
+    public async Task ComparisonPayload_UsesItsOwnFixedModelReasoningAndTokenConfiguration()
     {
         var handler = new CapturingHandler(CreateComparisonApiResponse());
+        var options = CreateOpenAiOptions("high");
+        options.Value.ComparisonModel = "comparison-model-snapshot";
+        options.Value.ComparisonReasoningEffort = "low";
+        options.Value.ComparisonMaxOutputTokens = 3456;
         using var client = new HttpClient(handler);
         var service = new OpenAiEsrComparisonService(
             client,
-            CreateOpenAiOptions("medium"),
+            options,
             new ComparisonCalculator(new ScoreCalculator()),
             NullLogger<OpenAiEsrComparisonService>.Instance);
 
@@ -54,7 +58,9 @@ public sealed class ExperimentReadinessTests
         using var payload = JsonDocument.Parse(handler.RequestBody!);
         var root = payload.RootElement;
         Assert.False(root.GetProperty("store").GetBoolean());
-        Assert.Equal("medium", root.GetProperty("reasoning").GetProperty("effort").GetString());
+        Assert.Equal("comparison-model-snapshot", root.GetProperty("model").GetString());
+        Assert.Equal("low", root.GetProperty("reasoning").GetProperty("effort").GetString());
+        Assert.Equal(3456, root.GetProperty("max_output_tokens").GetInt32());
         Assert.Equal("resp_comparison_123", result.ApiMetadata?.ResponseId);
         Assert.Equal(210, result.ApiMetadata?.InputTokens);
         Assert.Equal(90, result.ApiMetadata?.OutputTokens);
@@ -170,11 +176,12 @@ public sealed class ExperimentReadinessTests
 
         var json = new ExperimentJsonExporter().Export(run);
 
-        Assert.Contains("\"experimentSchemaVersion\": \"2.0\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"experimentSchemaVersion\": \"2.1\"", json, StringComparison.Ordinal);
         Assert.Contains("\"profileSnapshot\"", json, StringComparison.Ordinal);
         Assert.Contains("\"promptTemplateSnapshot\"", json, StringComparison.Ordinal);
         Assert.Contains("\"content\": \"Frozen prompt template\"", json, StringComparison.Ordinal);
         Assert.Contains("\"openAiRequestSnapshot\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"comparisonOpenAiRequestSnapshot\"", json, StringComparison.Ordinal);
         Assert.Contains("\"scoreBreakdown\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("sensitiveContent", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("SECRET_CALL_TEXT", json, StringComparison.Ordinal);
@@ -214,10 +221,12 @@ public sealed class ExperimentReadinessTests
         Assert.Contains("comparison_total_tokens", runsCsv, StringComparison.Ordinal);
         Assert.Contains("total_duration_ms", runsCsv, StringComparison.Ordinal);
         Assert.Contains("shared_strengths_count", runsCsv, StringComparison.Ordinal);
-        Assert.Contains("\"10.5\",\"10.0\",\"0.5\"", runsCsv, StringComparison.Ordinal);
+        Assert.Contains("evaluation_configured_model", runsCsv, StringComparison.Ordinal);
+        Assert.Contains("comparison_reasoning_effort", runsCsv, StringComparison.Ordinal);
+        Assert.Contains("\"10.5\",\"10\",\"0.5\"", runsCsv, StringComparison.Ordinal);
         Assert.Contains("\"120\",\"80\",\"200\"", runsCsv, StringComparison.Ordinal);
         Assert.Contains("criterion_id,criterion_name,llm_score,esr_score,score_difference", criteriaCsv, StringComparison.Ordinal);
-        Assert.Contains("\"excellence\",\"Excellence\",\"4.0\",\"3.5\",\"0.5\"", criteriaCsv, StringComparison.Ordinal);
+        Assert.Contains("\"excellence\",\"Excellence\",\"4\",\"3.5\",\"0.5\"", criteriaCsv, StringComparison.Ordinal);
         Assert.Contains("\"1\",\"1\",\"1\",\"1\"", criteriaCsv, StringComparison.Ordinal);
     }
 
@@ -480,6 +489,17 @@ public sealed class ExperimentReadinessTests
                     Content = "Frozen prompt template"
                 },
                 OpenAiRequestSnapshot = new OpenAiRequestSnapshot
+                {
+                    ConfiguredModel = OpenAiOptions.DefaultModel,
+                    ReasoningEffort = "medium",
+                    MaxOutputTokens = 5000,
+                    TimeoutSeconds = 180,
+                    MaxAttempts = 3,
+                    InitialRetryDelayMilliseconds = 500,
+                    StoreResponse = false,
+                    Endpoint = "https://api.openai.com/v1/responses"
+                },
+                ComparisonOpenAiRequestSnapshot = new OpenAiRequestSnapshot
                 {
                     ConfiguredModel = OpenAiOptions.DefaultModel,
                     ReasoningEffort = "medium",

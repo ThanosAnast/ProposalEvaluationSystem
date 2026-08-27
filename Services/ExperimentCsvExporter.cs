@@ -10,7 +10,10 @@ public sealed class ExperimentCsvExporter : IExperimentCsvExporter
     {
         var builder = new StringBuilder();
         builder.AppendLine(
-            "dataset_id,run_id,created_at_utc,profile,programme,model,prompt_file,prompt_sha256,input_fingerprint," +
+            "dataset_id,run_id,created_at_utc,profile,programme,model," +
+            "evaluation_configured_model,evaluation_reasoning_effort,evaluation_max_output_tokens," +
+            "comparison_configured_model,comparison_reasoning_effort,comparison_max_output_tokens,comparison_response_model," +
+            "prompt_file,prompt_sha256,input_fingerprint," +
             "llm_total,esr_total,total_difference,llm_threshold_met,esr_threshold_met,threshold_agreement," +
             "shared_strengths_count,shared_weaknesses_count,llm_only_count,esr_only_count," +
             "evaluation_response_id,comparison_response_id,evaluation_input_tokens,evaluation_output_tokens," +
@@ -34,6 +37,13 @@ public sealed class ExperimentCsvExporter : IExperimentCsvExporter
                 run.Metadata.EvaluationProfileId,
                 run.Metadata.ProgrammeType.ToString(),
                 run.Metadata.ModelName,
+                run.Metadata.OpenAiRequestSnapshot?.ConfiguredModel,
+                run.Metadata.OpenAiRequestSnapshot?.ReasoningEffort,
+                Int(run.Metadata.OpenAiRequestSnapshot?.MaxOutputTokens),
+                run.Metadata.ComparisonOpenAiRequestSnapshot?.ConfiguredModel,
+                run.Metadata.ComparisonOpenAiRequestSnapshot?.ReasoningEffort,
+                Int(run.Metadata.ComparisonOpenAiRequestSnapshot?.MaxOutputTokens),
+                comparisonApi?.Model,
                 run.Metadata.PromptFileName,
                 run.Metadata.PromptContentSha256,
                 run.Metadata.InputFingerprint,
@@ -72,7 +82,10 @@ public sealed class ExperimentCsvExporter : IExperimentCsvExporter
     {
         var builder = new StringBuilder();
         builder.AppendLine(
-            "dataset_id,run_id,created_at_utc,profile,model,criterion_id,criterion_name,llm_score,esr_score," +
+            "dataset_id,run_id,created_at_utc,profile,model," +
+            "evaluation_configured_model,evaluation_reasoning_effort,evaluation_max_output_tokens," +
+            "comparison_configured_model,comparison_reasoning_effort,comparison_max_output_tokens,comparison_response_model," +
+            "criterion_id,criterion_name,llm_score,esr_score," +
             "score_difference,llm_total,esr_total,total_difference,threshold_agreement,shared_strengths_count," +
             "shared_weaknesses_count,llm_only_count,esr_only_count,summary,evaluation_duration_ms," +
             "comparison_duration_ms,evaluation_input_tokens,evaluation_output_tokens,evaluation_total_tokens," +
@@ -99,6 +112,13 @@ public sealed class ExperimentCsvExporter : IExperimentCsvExporter
                     run.Metadata.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture),
                     run.Metadata.EvaluationProfileId,
                     run.Metadata.ModelName,
+                    run.Metadata.OpenAiRequestSnapshot?.ConfiguredModel,
+                    run.Metadata.OpenAiRequestSnapshot?.ReasoningEffort,
+                    Int(run.Metadata.OpenAiRequestSnapshot?.MaxOutputTokens),
+                    run.Metadata.ComparisonOpenAiRequestSnapshot?.ConfiguredModel,
+                    run.Metadata.ComparisonOpenAiRequestSnapshot?.ReasoningEffort,
+                    Int(run.Metadata.ComparisonOpenAiRequestSnapshot?.MaxOutputTokens),
+                    comparisonApi?.Model,
                     criterion.CriterionId,
                     criterion.CriterionName,
                     Format(criterion.LlmScore),
@@ -130,9 +150,10 @@ public sealed class ExperimentCsvExporter : IExperimentCsvExporter
     private static void AppendRow(StringBuilder builder, params string?[] values) =>
         builder.AppendLine(string.Join(',', values.Select(Escape)));
 
-    private static string Format(decimal value) => value.ToString("0.0", CultureInfo.InvariantCulture);
+    private static string Format(decimal value) => value.ToString("0.############################", CultureInfo.InvariantCulture);
 
-    private static string? Format(decimal? value) => value?.ToString("0.0", CultureInfo.InvariantCulture);
+    private static string? Format(decimal? value) =>
+        value?.ToString("0.############################", CultureInfo.InvariantCulture);
 
     private static string? Bool(bool? value) => value?.ToString().ToLowerInvariant();
 

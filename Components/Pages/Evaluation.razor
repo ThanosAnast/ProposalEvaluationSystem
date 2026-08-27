@@ -152,7 +152,12 @@
                         <h2>1. Independent Evaluation</h2>
                         <span class="text-muted small">@SelectedProfile.PromptTemplateFileName</span>
                     </div>
-                    <p class="text-muted">Uses only the Evaluation Context, Proposal, and selected evaluation profile. ESR content is excluded.</p>
+                    <p class="text-muted">
+                        Uses only the Evaluation Context, Proposal, and selected evaluation profile. ESR content is excluded.<br />
+                        Configured condition: <code>@OpenAiConfiguration.Value.Model</code> · reasoning
+                        <code>@OpenAiConfiguration.Value.ReasoningEffort</code> · max output
+                        <code>@OpenAiConfiguration.Value.MaxOutputTokens</code> tokens.
+                    </p>
                     <div class="d-flex flex-wrap gap-2">
                         <button class="btn btn-outline-primary" type="button" @onclick="PreviewPromptAsync" disabled="@(!CanPreviewPrompt)">Preview Prompt</button>
                         <button class="btn btn-success" type="button" @onclick="RunIndependentEvaluationAsync" disabled="@(!CanRunIndependentEvaluation)">Run Independent Evaluation</button>
@@ -167,7 +172,12 @@
                     <div class="section-heading">
                         <h2>2. ESR Comparison</h2>
                     </div>
-                    <p class="text-muted">Confirm the official ESR scores. Numeric differences and threshold agreement are calculated by the application.</p>
+                    <p class="text-muted">
+                        Enter the official ESR scores exactly as reported. Numeric differences and threshold agreement are calculated by the application.<br />
+                        Qualitative comparison condition: <code>@OpenAiConfiguration.Value.ComparisonModel</code> · reasoning
+                        <code>@OpenAiConfiguration.Value.ComparisonReasoningEffort</code> · max output
+                        <code>@OpenAiConfiguration.Value.ComparisonMaxOutputTokens</code> tokens.
+                    </p>
                     <div class="row g-2">
                         @foreach (var criterion in SelectedProfile.Criteria)
                         {
@@ -178,7 +188,7 @@
                                        type="number"
                                        min="@FormatScoreAttribute(criterion.ScoreMinimum)"
                                        max="@FormatScoreAttribute(criterion.ScoreMaximum)"
-                                       step="@FormatScoreStep(criterion.ScoreIncrement)"
+                                       step="any"
                                        class="form-control"
                                        aria-describedby="@GetOfficialScoreHelpId(criterionId)"
                                        disabled="@isBusy"
@@ -187,6 +197,7 @@
                                        @bind:after="ReferenceInputsChanged" />
                                 <div id="@GetOfficialScoreHelpId(criterionId)" class="form-text">
                                     @FormatScore(criterion.ScoreMinimum) to @FormatScore(criterion.ScoreMaximum)
+                                    <span> &middot; Exact official decimals are preserved</span>
                                     @if (criterion.WeightPercentage.HasValue)
                                     {
                                         <span> &middot; Weight @FormatScore(criterion.WeightPercentage.Value)%</span>
@@ -293,7 +304,7 @@
     private bool HasValidReferenceScores => SelectedProfile.Criteria.All(criterion =>
         officialScores.TryGetValue(criterion.Id, out var score) &&
         score.HasValue &&
-        ScoreCalculator.IsValidScore(SelectedProfile, criterion.Id, score.Value));
+        ScoreCalculator.IsValidReferenceScore(SelectedProfile, criterion.Id, score.Value));
 
     private bool CanCompareWithEsr => !isBusy &&
         OpenAiConfiguration.Value.IsConfigured &&
@@ -759,9 +770,6 @@
 
     private static string FormatScoreAttribute(decimal score) =>
         score.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-    private static string FormatScoreStep(decimal? scoreIncrement) =>
-        scoreIncrement?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "any";
 
     private void CancelOperation()
     {

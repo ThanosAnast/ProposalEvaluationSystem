@@ -40,6 +40,8 @@ public sealed class ExperimentRunMetadata
 
     public OpenAiRequestSnapshot? OpenAiRequestSnapshot { get; set; }
 
+    public OpenAiRequestSnapshot? ComparisonOpenAiRequestSnapshot { get; set; }
+
     public OpenAiResponseMetadata? EvaluationApiMetadata { get; set; }
 
     public OpenAiResponseMetadata? ComparisonApiMetadata { get; set; }

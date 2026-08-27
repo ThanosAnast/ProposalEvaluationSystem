@@ -12,12 +12,12 @@
 
 1. Ελέγχει ότι υπάρχει ακριβώς ένα score για κάθε κριτήριο του ενεργού profile.
 2. Απορρίπτει άγνωστα, ελλιπή ή διπλά criterion IDs.
-3. Ελέγχει το επιτρεπτό εύρος και, όπου υπάρχει, το βήμα βαθμολογίας.
+3. Ελέγχει το επιτρεπτό εύρος και, για τα LLM scores, το βήμα βαθμολογίας του profile.
 4. Υπολογίζει τη συνεισφορά κάθε κριτηρίου στο συνολικό σκορ.
 5. Αθροίζει τις συνεισφορές.
 6. Εφαρμόζει τα επιμέρους και το συνολικό threshold.
 
-Η κεντρική υλοποίηση βρίσκεται στο `Services/ScoreCalculator.cs`. Το `Services/EvaluationResultProcessor.cs` εφαρμόζει τον υπολογισμό στην ανεξάρτητη αξιολόγηση και το `Services/ComparisonCalculator.cs` εφαρμόζει ακριβώς τους ίδιους κανόνες στα LLM και ESR scores.
+Η κεντρική υλοποίηση βρίσκεται στο `Services/ScoreCalculator.cs`. Το `Services/EvaluationResultProcessor.cs` εφαρμόζει τον αυστηρό υπολογισμό στην ανεξάρτητη αξιολόγηση. Το `Services/ComparisonCalculator.cs` χρησιμοποιεί τους ίδιους τύπους, ranges και thresholds για το ESR, αλλά δεν επιβάλλει το βήμα παραγωγής του LLM στις επίσημες βαθμολογίες. Έτσι τιμές όπως `2.60`, `1.90` ή `4.25` διατηρούνται ακριβώς.
 
 ## Additive scoring
 
@@ -116,11 +116,11 @@ S = 34 + 22.2 + 15.2 = 71.4
 
 ## Τι αποθηκεύεται για έλεγχο
 
-Κάθε νέο experiment run schema 2.0 αποθηκεύει:
+Κάθε νέο experiment run schema 2.1 αποθηκεύει:
 
 - το πλήρες snapshot του evaluation profile και των κανόνων scoring,
 - το prompt template και το SHA-256 του,
-- το configured model, reasoning effort και token limit,
+- ξεχωριστά configured model, reasoning effort και token limit για την ανεξάρτητη αξιολόγηση και την ποιοτική ESR σύγκριση,
 - raw scores, score breakdown, totals και threshold decisions,
 - τα αποτελέσματα σύγκρισης και τα API usage metadata,
 - hashes και character counts των εγγράφων.

@@ -25,16 +25,16 @@
                             {
                                 <tr>
                                     <td>@criterion.CriterionName</td>
-                                    <td class="text-end">@criterion.OfficialScore.ToString("0.0")</td>
-                                    <td class="text-end">@criterion.LlmScore.ToString("0.0")</td>
-                                    <td class="text-end">@criterion.NumericDifference.ToString("+0.0;-0.0;0.0")</td>
+                                    <td class="text-end">@criterion.OfficialScore.ToString("0.##")</td>
+                                    <td class="text-end">@criterion.LlmScore.ToString("0.##")</td>
+                                    <td class="text-end">@criterion.NumericDifference.ToString("+0.##;-0.##;0")</td>
                                 </tr>
                             }
                             <tr class="fw-semibold">
                                 <td>Total</td>
-                                <td class="text-end">@Result.OfficialTotalScore.ToString("0.0")</td>
-                                <td class="text-end">@Result.LlmTotalScore.ToString("0.0")</td>
-                                <td class="text-end">@Result.TotalScoreDifference.ToString("+0.0;-0.0;0.0")</td>
+                                <td class="text-end">@Result.OfficialTotalScore.ToString("0.##")</td>
+                                <td class="text-end">@Result.LlmTotalScore.ToString("0.##")</td>
+                                <td class="text-end">@Result.TotalScoreDifference.ToString("+0.##;-0.##;0")</td>
                             </tr>
                         </tbody>
                     </table>

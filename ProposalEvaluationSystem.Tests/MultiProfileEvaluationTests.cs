@@ -101,6 +101,32 @@ public sealed class MultiProfileEvaluationTests
     }
 
     [Fact]
+    public void OfficialCsaReferenceScores_PreserveExactDecimalsWithoutRelaxingLlmValidation()
+    {
+        var calculator = new ScoreCalculator();
+        var profile = EvaluationProfiles.HorizonEuropeCsa;
+
+        Assert.False(calculator.IsValidScore(profile, EvaluationCriterionIds.Excellence, 2.6m));
+        Assert.True(calculator.IsValidReferenceScore(profile, EvaluationCriterionIds.Excellence, 2.6m));
+        Assert.False(calculator.IsValidReferenceScore(profile, EvaluationCriterionIds.Excellence, -0.01m));
+        Assert.False(calculator.IsValidReferenceScore(profile, EvaluationCriterionIds.Excellence, 5.01m));
+        Assert.Throws<ScoreValidationException>(() => calculator.Calculate(
+            profile,
+            CreateCriteria(profile, 2.6m, 1.9m, 2.9m)));
+        Assert.Throws<ScoreValidationException>(() => calculator.CalculateReference(
+            profile,
+            CreateCriteria(profile, 5.01m, 3m, 3m)));
+
+        var antero = calculator.CalculateReference(profile, CreateCriteria(profile, 2.6m, 1.9m, 2.9m));
+        var hermes = calculator.CalculateReference(profile, CreateCriteria(profile, 4m, 3.5m, 4.25m));
+
+        Assert.Equal(7.4m, antero.TotalScore);
+        Assert.False(antero.ThresholdAssessment.Passed);
+        Assert.Equal(11.75m, hermes.TotalScore);
+        Assert.True(hermes.ThresholdAssessment.Passed);
+    }
+
+    [Fact]
     public void ErasmusScoring_UsesCriterionSpecificRangesAndThresholdsWithoutAnIncrement()
     {
         var calculator = new ScoreCalculator();
@@ -255,6 +281,45 @@ public sealed class MultiProfileEvaluationTests
         Assert.Equal(70m, result.OfficialTotalScore);
         Assert.Equal(3m, result.TotalScoreDifference);
         Assert.True(result.ThresholdAgreement);
+    }
+
+    [Fact]
+    public void ComparisonAndCsvExport_PreserveExactOfficialCsaDecimals()
+    {
+        var profile = EvaluationProfiles.HorizonEuropeCsa;
+        var comparison = Compare(profile, [4m, 4m, 4m], [4m, 3.5m, 4.25m]);
+        var calculation = new ScoreCalculator().Calculate(profile, CreateCriteria(profile, 4m, 4m, 4m));
+        var run = new ExperimentRun
+        {
+            Metadata = new ExperimentRunMetadata
+            {
+                DatasetId = "HERMES",
+                RunId = "run-01",
+                CreatedAtUtc = DateTimeOffset.Parse("2026-08-27T12:00:00Z"),
+                EvaluationProfileId = profile.Id,
+                ProgrammeType = profile.ProgrammeType,
+                ModelName = OpenAiOptions.DefaultModel
+            },
+            IndependentEvaluation = new EvaluationResult
+            {
+                EvaluationProfileId = profile.Id,
+                Criteria = CreateCriteria(profile, 4m, 4m, 4m).ToList(),
+                TotalScore = calculation.TotalScore,
+                ThresholdAssessment = calculation.ThresholdAssessment
+            },
+            ComparisonResult = comparison
+        };
+
+        var exporter = new ExperimentCsvExporter();
+        var runsCsv = exporter.ExportExperimentRuns([run]);
+        var criteriaCsv = exporter.ExportCriterionComparisons([run]);
+
+        Assert.Equal(11.75m, comparison.OfficialTotalScore);
+        Assert.Equal(4.25m, comparison.Criteria.Single(item =>
+            item.CriterionId == EvaluationCriterionIds.Implementation).OfficialScore);
+        Assert.Contains("\"11.75\"", runsCsv, StringComparison.Ordinal);
+        Assert.Contains("\"4.25\"", criteriaCsv, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"11.8\"", runsCsv, StringComparison.Ordinal);
     }
 
     private static EvaluationComparisonResult Compare(

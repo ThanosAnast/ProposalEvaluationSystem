@@ -69,6 +69,19 @@ public sealed class ExperimentRunFactory : IExperimentRunFactory
                     StoreResponse = false,
                     Endpoint = openAiOptions.Endpoint
                 },
+                ComparisonOpenAiRequestSnapshot = request.ComparisonResult is null
+                    ? null
+                    : new OpenAiRequestSnapshot
+                    {
+                        ConfiguredModel = openAiOptions.ComparisonModel,
+                        ReasoningEffort = openAiOptions.ComparisonReasoningEffort,
+                        MaxOutputTokens = openAiOptions.ComparisonMaxOutputTokens,
+                        TimeoutSeconds = openAiOptions.TimeoutSeconds,
+                        MaxAttempts = openAiOptions.MaxAttempts,
+                        InitialRetryDelayMilliseconds = openAiOptions.InitialRetryDelayMilliseconds,
+                        StoreResponse = false,
+                        Endpoint = openAiOptions.Endpoint
+                    },
                 EvaluationApiMetadata = request.IndependentEvaluation.ApiMetadata,
                 ComparisonApiMetadata = request.ComparisonResult?.ApiMetadata
             },
